@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { RetroLayout } from '@/components/layout/RetroLayout';
-import { useMarketStore, enrichItem } from '@/store/marketStore';
+import { useMarketStore, selectItemById } from '@/store/marketStore';
 import { fetchItemTimeseries, TimeseriesPoint } from '@/lib/api';
 import { ItemChart } from '@/components/market/ItemChart';
 import { Button } from '@/components/ui/button';
@@ -11,16 +11,10 @@ export function ItemDetailPage() {
     const { id } = useParams();
     const navigate = useNavigate();
     const itemId = parseInt(id || '0');
-    const items = useMarketStore(s => s.items);
-    const prices = useMarketStore(s => s.prices);
-    const favorites = useMarketStore(s => s.favorites);
+    const item = useMarketStore(selectItemById(itemId));
     const toggleFavorite = useMarketStore(s => s.toggleFavorite);
     const [chartData, setChartData] = useState<TimeseriesPoint[]>([]);
     const [isLoadingChart, setIsLoadingChart] = useState(true);
-    const item = useMemo(() => {
-        const raw = items.find(i => i.id === itemId);
-        return raw ? enrichItem(raw, prices, favorites) : null;
-    }, [items, prices, favorites, itemId]);
     useEffect(() => {
         if (!itemId) return;
         const loadTimeline = async () => {
@@ -59,9 +53,9 @@ export function ItemDetailPage() {
                     <ArrowLeft size={16} className="mr-2" />
                     BACK_TO_TERMINAL
                 </Button>
-                <Button
+                <Button 
                     onClick={() => toggleFavorite(item.id)}
-                    variant="ghost"
+                    variant="ghost" 
                     className={`rounded-none h-8 ${item.isFavorite ? 'text-terminal-amber' : 'text-terminal-green/50'}`}
                 >
                     <Star size={16} className={item.isFavorite ? 'fill-terminal-amber' : ''} />
@@ -69,6 +63,7 @@ export function ItemDetailPage() {
                 </Button>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Left Column: Info & Stats */}
                 <div className="lg:col-span-1 space-y-6">
                     <div className="border border-terminal-green/30 p-6 bg-terminal-green/5 relative">
                         <div className="absolute top-2 right-2 opacity-20">
@@ -121,17 +116,42 @@ export function ItemDetailPage() {
                                 <span className="text-terminal-green font-bold">NET_PROFIT:</span>
                                 <span className="text-xl font-bold glow-text">+{item.margin.toLocaleString()}gp</span>
                             </div>
+                            <div className="text-right text-[10px] text-terminal-amber">
+                                ROI: {item.roi.toFixed(2)}%
+                            </div>
                         </div>
                     </div>
                 </div>
+                {/* Right Column: Chart */}
                 <div className="lg:col-span-2 border border-terminal-green/30 p-6 bg-terminal-black">
                     <div className="flex justify-between items-center border-b border-terminal-green/20 pb-4 mb-4">
                         <h2 className="font-bold tracking-widest text-lg uppercase flex items-center gap-3">
                             <span className="w-2 h-2 bg-terminal-green animate-pulse" />
                             PRICE_HISTORY_LOG
                         </h2>
+                        <div className="text-[10px] font-mono text-terminal-green/50">
+                            MODE: 1H_FREQUENCY // RANGE: 24H
+                        </div>
                     </div>
                     <ItemChart data={chartData} isLoading={isLoadingChart} />
+                    <div className="mt-6 p-4 bg-terminal-green/5 border border-terminal-green/10 text-[10px] font-mono uppercase grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                            <span className="text-terminal-green/50 block">BUY_LIMIT:</span>
+                            <span>{item.limit?.toLocaleString() ?? 'UNKNOWN'}</span>
+                        </div>
+                        <div>
+                            <span className="text-terminal-green/50 block">HIGH_ALCH:</span>
+                            <span className="text-terminal-amber">{item.highalch?.toLocaleString() ?? 'N/A'}gp</span>
+                        </div>
+                        <div>
+                            <span className="text-terminal-green/50 block">VALUE:</span>
+                            <span>{item.value.toLocaleString()}gp</span>
+                        </div>
+                        <div>
+                            <span className="text-terminal-green/50 block">DATA_INTEGRITY:</span>
+                            <span className="text-terminal-green">VERIFIED</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </RetroLayout>

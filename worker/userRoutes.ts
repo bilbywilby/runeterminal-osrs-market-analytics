@@ -24,4 +24,19 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
             return c.json({ error: 'Failed to fetch item mapping' }, 500);
         }
     });
+    app.get('/api/proxy/timeseries', async (c) => {
+        const id = c.req.query('id');
+        const timestep = c.req.query('timestep') || '5m';
+        if (!id) return c.json({ error: 'Missing item ID' }, 400);
+        try {
+            const url = `https://prices.runescape.wiki/api/v1/osrs/timeseries?id=${id}&timestep=${timestep}`;
+            const response = await fetch(url, {
+                headers: { 'User-Agent': WIKI_USER_AGENT }
+            });
+            const data = await response.json();
+            return c.json(data);
+        } catch (error) {
+            return c.json({ error: 'Failed to fetch timeseries' }, 500);
+        }
+    });
 }
