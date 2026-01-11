@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { fetchLatestPrices, fetchItemMapping, fetch24hPrices, ItemMapping, RawPrice, Volume24h } from '@/lib/api';
+import { fetchLatestPrices, fetchItemMapping, fetch24hPrices, fetch5mPrices, ItemMapping, RawPrice, Volume24h, TimeStepPrice } from '@/lib/api';
 import { calculateFlippingMetrics, FlippingMetrics, calculateAdvancedMetrics, AdvancedMetrics, AnalyticsConfig, DEFAULT_ANALYTICS_CONFIG } from '@/lib/flippingEngine';
 import { ItemAggregate } from '@/lib/analytics';
 export interface EnrichedItem extends ItemMapping {
@@ -19,6 +19,7 @@ interface ScannerConfig extends AnalyticsConfig {
 interface MarketState {
     items: ItemMapping[];
     prices: Record<string, RawPrice>;
+    prices5m: Record<string, TimeStepPrice>;
     volumes24h: Record<string, Volume24h>;
     history: Record<string, RawPrice>[];
     perItemAggs: Record<number, ItemAggregate>;
@@ -36,11 +37,12 @@ interface MarketState {
     setViewPreference: (pref: 'table' | 'grid') => void;
     updateScannerConfig: (config: Partial<ScannerConfig>) => void;
 }
-const PERSISTENCE_KEY = 'rune_terminal_state_v1';
+const PERSISTENCE_KEY = 'rune_terminal_state_v2';
 const MAX_SNAPSHOTS = 120;
 export const useMarketStore = create<MarketState>((set, get) => ({
     items: [],
     prices: {},
+    prices5m: {},
     volumes24h: {},
     history: [],
     perItemAggs: {},
@@ -92,19 +94,6 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                     });
                 }
             }
-            setTimeout(() => {
-                try {
-                    const storageData = {
-                        history: newHistory,
-                        perItemAggs: Object.fromEntries(
-                            Object.entries(nextAggs).map(([k, v]) => [k, v.toJSON()])
-                        )
-                    };
-                    localStorage.setItem(PERSISTENCE_KEY, JSON.stringify(storageData));
-                } catch (e) {
-                    console.error("[STORAGE_FAIL]", e);
-                }
-            }, 500);
             return { history: newHistory, perItemAggs: nextAggs };
         });
     },
@@ -116,6 +105,8 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             const latest = await fetchLatestPrices();
             await new Promise(resolve => setTimeout(resolve, 1100));
             const v24 = await fetch24hPrices();
+            await new Promise(resolve => setTimeout(resolve, 1100));
+            const p5m = await fetch5mPrices();
             let history: Record<string, RawPrice>[] = [latest];
             let perItemAggs: Record<number, ItemAggregate> = {};
             const saved = localStorage.getItem(PERSISTENCE_KEY);
@@ -126,15 +117,6 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                     Object.entries(parsed.perItemAggs || {}).forEach(([id, data]) => {
                         perItemAggs[parseInt(id)] = new ItemAggregate(data as any);
                     });
-                    if (Object.keys(perItemAggs).length === 0 && history.length > 0) {
-                        history.forEach(snap => {
-                            Object.entries(snap).forEach(([idStr, p]) => {
-                                const id = parseInt(idStr);
-                                if (!perItemAggs[id]) perItemAggs[id] = new ItemAggregate();
-                                if (p.high && p.low) perItemAggs[id].add((p.high + p.low) / 2);
-                            });
-                        });
-                    }
                 } catch (e) {
                     console.warn("[HYDRATION_ERROR]", e);
                 }
@@ -150,6 +132,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             set({
                 items: mapping,
                 prices: latest,
+                prices5m: p5m,
                 volumes24h: v24,
                 history,
                 perItemAggs,
@@ -166,8 +149,10 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             const latest = await fetchLatestPrices();
             await new Promise(resolve => setTimeout(resolve, 1100));
             const v24 = await fetch24hPrices();
+            await new Promise(resolve => setTimeout(resolve, 1100));
+            const p5m = await fetch5mPrices();
             get().addSnapshot(latest);
-            set({ prices: latest, volumes24h: v24, lastUpdated: Date.now() });
+            set({ prices: latest, prices5m: p5m, volumes24h: v24, lastUpdated: Date.now() });
         } catch (error) {
             console.error("Price refresh cycle failure:", error instanceof Error ? error.message : error);
         }

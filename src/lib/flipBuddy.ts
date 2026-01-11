@@ -1,4 +1,4 @@
-import { ItemMapping, RawPrice, Volume24h } from './api';
+import { ItemMapping, RawPrice, Volume24h, TimeStepPrice } from './api';
 import { calculateFlippingMetrics } from './flippingEngine';
 export interface FlipBuddyRec {
   id: number;
@@ -6,7 +6,7 @@ export interface FlipBuddyRec {
   buyPrice: number;
   sellPrice: number;
   profitPerItem: number;
-  liquidityRating: number; // 1-5
+  liquidityRating: number; // 1-5 scale based on 5m velocity
   profitHr: number;
   volClass: 'STABLE' | 'MODERATE' | 'VOLATILE';
   shortNote: string;
@@ -37,28 +37,27 @@ export function computeRecs(
   focus: string,
   items: ItemMapping[],
   prices: Record<string, RawPrice>,
-  volumes: Record<string, Volume24h>
+  volumes: Record<string, Volume24h>,
+  prices5m: Record<string, TimeStepPrice>
 ): FlipBuddyResponse {
   const now = Math.floor(Date.now() / 1000);
-  const horizonMult = horizon === '2h' ? 1.0 : horizon === 'overnight' ? 0.6 : 0.2;
+  const horizonMult = horizon === '2h' ? 1.0 : 0.4;
   const validItems = items
     .filter(item => {
       const p = prices[item.id];
       const v = volumes[item.id];
       if (!p || !v || p.high === 0 || p.low === 0) return false;
-      // Strict Validation: Data Freshness (24h)
+      // Data Freshness Validation (24h)
       const lastUpdate = Math.max(p.highTime, p.lowTime);
       if (now - lastUpdate > 86400) return false;
-      // Volume-based Price Band Thresholds
+      // Price-Band Volume Thresholds
       const v24h = v.highPriceVolume + v.lowPriceVolume;
       if (p.low > 1000000 && v24h < 50) return false;
       if (p.low > 1000 && v24h < 500) return false;
-      // Min Compound ROI (0.5% of total working capital)
+      // Compound ROI check (min 0.5% of working capital)
       const metrics = calculateFlippingMetrics(item, p, v);
-      if (metrics.margin < (capital * 0.005)) {
-          // Alternative: item itself must provide decent ROI
-          if (metrics.roi < 1.0) return false;
-      }
+      if (metrics.margin < (capital * 0.005) && metrics.roi < 1.0) return false;
+      // Filter focus
       if (focus === 'gear' && !item.examine.toLowerCase().includes('armour') && !item.examine.toLowerCase().includes('weapon')) return false;
       if (focus === 'rares' && item.value < 1000000) return false;
       return p.low <= capital;
@@ -66,26 +65,25 @@ export function computeRecs(
     .map(item => {
       const p = prices[item.id];
       const v = volumes[item.id];
+      const p5m = prices5m[item.id];
       const metrics = calculateFlippingMetrics(item, p, v);
-      const v24h = (v.highPriceVolume + v.lowPriceVolume);
-      // Turnover-Liquidity Model
-      const liquidityRating = Math.min(5, Math.ceil(v24h / 5000) || 1);
-      // Map liquidity to fractional mid-price turnover bands
+      // Liquidity Model using 5m data
+      const v5m = p5m ? (p5m.highPriceVolume + p5m.lowPriceVolume) : 0;
+      const liquidityRating = Math.min(5, Math.ceil(v5m / 50) || 1);
+      // Turnover forecasting
+      const v24h = v.highPriceVolume + v.lowPriceVolume;
       const turnoverFrac = Math.min(1, (v24h / 24) / (item.limit || 1000));
-      // Capital Constraint: Can we buy the full limit?
       const maxCanAfford = Math.floor(capital / p.low);
       const effectiveLimit = Math.min(item.limit || 1000, maxCanAfford);
-      // Slippage & Profit Adjustment
       const slippage = 0.05 + (metrics.volatilityScore * 0.1);
-      const limitProfit = metrics.margin * effectiveLimit;
-      const profitHr = (limitProfit * (1 - slippage)) * turnoverFrac * horizonMult;
+      const profitHr = (metrics.margin * effectiveLimit * (1 - slippage)) * turnoverFrac * horizonMult;
       const spread = (p.high - p.low) / ((p.high + p.low) / 2);
       const volClass: 'STABLE' | 'MODERATE' | 'VOLATILE' =
         spread < 0.02 ? 'STABLE' : spread < 0.05 ? 'MODERATE' : 'VOLATILE';
-      let shortNote = "LOCKED_IN";
-      if (volClass === 'VOLATILE') shortNote = "STOP_LOSS_ADVISED";
-      if (liquidityRating < 2) shortNote = "LOW_LIQUIDITY_WARNING";
-      if (effectiveLimit < (item.limit || 1000)) shortNote = "CAPITAL_CONSTRAINED";
+      let shortNote = "TARGET_LOCKED";
+      if (liquidityRating < 2) shortNote = "LOW_5M_VELOCITY";
+      if (volClass === 'VOLATILE') shortNote = "HIGH_SLIP_RISK";
+      if (effectiveLimit < (item.limit || 1000)) shortNote = "CAPITAL_BOTTLENECK";
       return {
         id: item.id,
         name: item.name,
@@ -103,7 +101,7 @@ export function computeRecs(
   const alternates = validItems.slice(6, 9);
   const wildcard = validItems.find(i => i.volClass === 'VOLATILE') || validItems[validItems.length - 1];
   return {
-    summary: `STRATEGY_LOADED: Capital ${capital.toLocaleString()}GP | Risk ${risk.toUpperCase()} | Horizon ${horizon.toUpperCase()}. Found ${validItems.length} potential vectors.`,
+    summary: `UPLINK_U64: CAPITAL=${capital.toLocaleString()} RISK=${risk.toUpperCase()} VALID_VECTORS=${validItems.length}. SYSTEM_FRESHNESS_VERIFIED.`,
     items: top6,
     alternates: alternates,
     wildcard: wildcard as FlipBuddyRec

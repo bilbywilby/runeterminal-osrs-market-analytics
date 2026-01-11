@@ -8,6 +8,12 @@ export interface Volume24h {
     highPriceVolume: number;
     lowPriceVolume: number;
 }
+export interface TimeStepPrice {
+    avgHighPrice: number | null;
+    avgLowPrice: number | null;
+    highPriceVolume: number;
+    lowPriceVolume: number;
+}
 export interface ItemMapping {
     id: number;
     name: string;
@@ -38,6 +44,18 @@ export async function fetchLatestPrices(): Promise<Record<string, RawPrice>> {
     if (!response.ok) throw new Error(`HTTP_${response.status}_LATEST`);
     const json = await response.json();
     return validateApiResponse<Record<string, RawPrice>>(json.data, (d) => typeof d === 'object', 'INVALID_LATEST');
+}
+export async function fetch5mPrices(): Promise<Record<string, TimeStepPrice>> {
+    const response = await fetch('/api/proxy/5m');
+    if (!response.ok) throw new Error(`HTTP_${response.status}_5M`);
+    const json = await response.json();
+    return validateApiResponse<Record<string, TimeStepPrice>>(json.data, (d) => typeof d === 'object', 'INVALID_5M');
+}
+export async function fetch1hPrices(): Promise<Record<string, TimeStepPrice>> {
+    const response = await fetch('/api/proxy/1h');
+    if (!response.ok) throw new Error(`HTTP_${response.status}_1H`);
+    const json = await response.json();
+    return validateApiResponse<Record<string, TimeStepPrice>>(json.data, (d) => typeof d === 'object', 'INVALID_1H');
 }
 export async function fetch24hPrices(): Promise<Record<string, Volume24h>> {
     const response = await fetch('/api/proxy/24h');

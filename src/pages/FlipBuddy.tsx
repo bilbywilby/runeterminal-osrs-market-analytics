@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 export function FlipBuddy() {
   const items = useMarketStore(s => s.items);
   const prices = useMarketStore(s => s.prices);
+  const prices5m = useMarketStore(s => s.prices5m);
   const volumes = useMarketStore(s => s.volumes24h);
   const [capital, setCapital] = useState('10M');
   const [risk, setRisk] = useState('moderate');
@@ -25,8 +26,8 @@ export function FlipBuddy() {
     const logs = [
         "INITIALIZING_NEURAL_UPLINK...",
         "FETCHING_MARKET_SNAPSHOTS...",
-        "APPLYING_LIQUIDITY_FILTERS...",
-        "SCALING_TURNOVER_VECTORS...",
+        "ANALYZING_5M_LIQUIDITY_DYNAMICS...",
+        "VERIFYING_24H_DATA_FRESHNESS...",
         "COMPUTING_QUANT_RANKINGS..."
     ];
     for (const log of logs) {
@@ -39,7 +40,7 @@ export function FlipBuddy() {
         toast.error("INVALID_CAPITAL_INPUT");
         return;
       }
-      const recs = computeRecs(capNum, risk, horizon, focus, items, prices, volumes);
+      const recs = computeRecs(capNum, risk, horizon, focus, items, prices, volumes, prices5m);
       if (!recs || !recs.items.length) {
         toast.error("ZERO_VECTORS_FOUND");
         setProcessLog(prev => [...prev, "> ERROR: NO_VIABLE_TARGETS"]);

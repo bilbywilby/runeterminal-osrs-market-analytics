@@ -24,7 +24,7 @@ export function HomePage() {
             if (!isSyncing && !isLoading) {
                 refreshPrices().catch(err => console.error("[SYNC_ERR]", err));
             }
-        }, 30000);
+        }, 120000); // 120s polling interval
         return () => clearInterval(interval);
     }, [isSyncing, isLoading, refreshPrices]);
     const handleManualRefresh = async () => {
@@ -75,7 +75,7 @@ export function HomePage() {
                                 {searchQuery ? 'SEARCH_RESULTS' : 'TOP_MARKET_FLIPS'}
                             </h2>
                             <div className="text-[9px] font-mono text-terminal-green/40 text-right uppercase leading-tight">
-                                LAST_PULSE: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : 'INITIALIZING...'} <br/>
+                                PULSE_RATE: 120s // LAST_UPLINK: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : 'INITIALIZING...'} <br/>
                                 BUFFER_STATE: {historyLength} / 120 SNAPSHOTS
                             </div>
                         </div>
