@@ -37,8 +37,9 @@ interface MarketState {
     setViewPreference: (pref: 'table' | 'grid') => void;
     updateScannerConfig: (config: Partial<ScannerConfig>) => void;
 }
-const PERSISTENCE_KEY = 'rune_terminal_state_v2';
+const PERSISTENCE_KEY = 'rune_terminal_state_v3';
 const MAX_SNAPSHOTS = 120;
+const MAX_PERSISTED_HISTORY = 10;
 export const useMarketStore = create<MarketState>((set, get) => ({
     items: [],
     prices: {},
@@ -51,18 +52,22 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     lastUpdated: 0,
     searchQuery: '',
     viewPreference: 'table',
-    scannerConfig: {
-        ...DEFAULT_ANALYTICS_CONFIG,
-        minMarginVolume: 100000,
-        maxVolatility: 10,
-        topN: 50
-    },
+    scannerConfig: (() => {
+        const saved = localStorage.getItem('rune_terminal_scanner_config');
+        return saved ? { ...DEFAULT_ANALYTICS_CONFIG, ...JSON.parse(saved) } : {
+            ...DEFAULT_ANALYTICS_CONFIG,
+            minMarginVolume: 100000,
+            maxVolatility: 10,
+            topN: 50
+        };
+    })(),
     setSearchQuery: (searchQuery) => set({ searchQuery }),
     setViewPreference: (viewPreference) => set({ viewPreference }),
-    updateScannerConfig: (config) => set((state) => ({
-        scannerConfig: { ...state.scannerConfig, ...config },
-        lastUpdated: Date.now()
-    })),
+    updateScannerConfig: (config) => set((state) => {
+        const next = { ...state.scannerConfig, ...config };
+        localStorage.setItem('rune_terminal_scanner_config', JSON.stringify(next));
+        return { scannerConfig: next, lastUpdated: Date.now() };
+    }),
     toggleFavorite: (id) => {
         set((state) => {
             const next = state.favorites.includes(id)
@@ -74,7 +79,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     },
     addSnapshot: (newPrices) => {
         set((state) => {
-            const newHistory = [newPrices, ...state.history];
+            const newHistory = [newPrices, ...state.history].slice(0, MAX_SNAPSHOTS);
             const nextAggs = { ...state.perItemAggs };
             Object.entries(newPrices).forEach(([idStr, p]) => {
                 const id = parseInt(idStr);
@@ -83,8 +88,9 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                     nextAggs[id].add((p.high + p.low) / 2);
                 }
             });
-            if (newHistory.length > MAX_SNAPSHOTS) {
-                const evicted = newHistory.pop();
+            // Eviction logic for aggregates if history was exceeded
+            if (state.history.length >= MAX_SNAPSHOTS) {
+                const evicted = state.history[state.history.length - 1];
                 if (evicted) {
                     Object.entries(evicted).forEach(([idStr, p]) => {
                         const id = parseInt(idStr);
@@ -94,18 +100,32 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                     });
                 }
             }
+            // Quota-safe persistence attempt for a small window of history
+            try {
+                const persistBundle = {
+                    history: newHistory.slice(0, MAX_PERSISTED_HISTORY),
+                    lastUpdated: Date.now()
+                };
+                localStorage.setItem(PERSISTENCE_KEY, JSON.stringify(persistBundle));
+            } catch (e) {
+                console.warn("[QUOTA_EXCEEDED] History persistence skipped");
+            }
             return { history: newHistory, perItemAggs: nextAggs };
         });
     },
     loadData: async () => {
+        // Optimization: Don't reload if we already have items unless it's very stale (> 10 mins)
+        if (get().items.length > 0 && (Date.now() - get().lastUpdated < 600000)) {
+            return;
+        }
         set({ isLoading: true });
         try {
             const mapping = await fetchItemMapping();
-            await new Promise(resolve => setTimeout(resolve, 1100));
+            await new Promise(resolve => setTimeout(resolve, 800));
             const latest = await fetchLatestPrices();
-            await new Promise(resolve => setTimeout(resolve, 1100));
+            await new Promise(resolve => setTimeout(resolve, 800));
             const v24 = await fetch24hPrices();
-            await new Promise(resolve => setTimeout(resolve, 1100));
+            await new Promise(resolve => setTimeout(resolve, 800));
             const p5m = await fetch5mPrices();
             let history: Record<string, RawPrice>[] = [latest];
             let perItemAggs: Record<number, ItemAggregate> = {};
@@ -113,22 +133,19 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             if (saved) {
                 try {
                     const parsed = JSON.parse(saved);
-                    history = parsed.history || [latest];
-                    Object.entries(parsed.perItemAggs || {}).forEach(([id, data]) => {
-                        perItemAggs[parseInt(id)] = new ItemAggregate(data as any);
-                    });
+                    if (parsed.history) history = [...parsed.history];
                 } catch (e) {
                     console.warn("[HYDRATION_ERROR]", e);
                 }
             }
-            if (Object.keys(perItemAggs).length === 0) {
-                Object.entries(latest).forEach(([idStr, p]) => {
+            // Rebuild aggregates from restored history
+            history.forEach(snap => {
+                Object.entries(snap).forEach(([idStr, p]) => {
                     const id = parseInt(idStr);
-                    const agg = new ItemAggregate();
-                    if (p.high && p.low) agg.add((p.high + p.low) / 2);
-                    perItemAggs[id] = agg;
+                    if (!perItemAggs[id]) perItemAggs[id] = new ItemAggregate();
+                    if (p.high && p.low) perItemAggs[id].add((p.high + p.low) / 2);
                 });
-            }
+            });
             set({
                 items: mapping,
                 prices: latest,
@@ -140,21 +157,22 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                 lastUpdated: Date.now()
             });
         } catch (error) {
-            console.error("Critical store load failure:", error instanceof Error ? error.message : error);
+            console.error("Critical store load failure:", error);
             set({ isLoading: false });
         }
     },
     refreshPrices: async () => {
         try {
             const latest = await fetchLatestPrices();
-            await new Promise(resolve => setTimeout(resolve, 1100));
+            await new Promise(resolve => setTimeout(resolve, 800));
             const v24 = await fetch24hPrices();
-            await new Promise(resolve => setTimeout(resolve, 1100));
+            await new Promise(resolve => setTimeout(resolve, 800));
             const p5m = await fetch5mPrices();
             get().addSnapshot(latest);
             set({ prices: latest, prices5m: p5m, volumes24h: v24, lastUpdated: Date.now() });
         } catch (error) {
-            console.error("Price refresh cycle failure:", error instanceof Error ? error.message : error);
+            console.error("Price refresh cycle failure:", error);
+            throw error; // Rethrow for UI feedback
         }
     }
 }));
@@ -162,7 +180,7 @@ export function enrichItem(
     item: ItemMapping,
     prices: Record<string, RawPrice>,
     favorites: number[],
-    history: Record<string, RawPrice>[] = [],
+    history: Record<string, RawPrice> = {},
     config: AnalyticsConfig = DEFAULT_ANALYTICS_CONFIG,
     volumes24h: Record<string, Volume24h> = {},
     aggs: Record<number, ItemAggregate> = {}
@@ -171,7 +189,7 @@ export function enrichItem(
     const v24 = volumes24h[item.id];
     const metrics = calculateFlippingMetrics(item, p, v24);
     const agg = aggs[item.id];
-    const advanced = calculateAdvancedMetrics(item, p, history, config, v24, agg);
+    const advanced = calculateAdvancedMetrics(item, p, [], config, v24, agg);
     return {
         ...item,
         high: metrics.sellPrice,
