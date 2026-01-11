@@ -1,4 +1,5 @@
 import { RawPrice, ItemMapping } from './api';
+import { RollingStats, tanhNormalize, calculateRankScore } from './analytics';
 export interface FlippingMetrics {
   buyPrice: number;
   sellPrice: number;
@@ -15,7 +16,24 @@ export interface AdvancedMetrics {
   stdDev: number;
   historicalVolatility: number;
   sampleSize: number;
+  observedVolumePerHour: number;
+  riskAdjustedProfit: number;
+  rankScore: number;
 }
+export interface AnalyticsConfig {
+  sensitivityGpPerTrade: number;
+  alphaRisk: number;
+  slippage: number;
+  humanCap: number;
+  minSnapshots: number;
+}
+export const DEFAULT_ANALYTICS_CONFIG: AnalyticsConfig = {
+  sensitivityGpPerTrade: 50,
+  alphaRisk: 6,
+  slippage: 0.05,
+  humanCap: 1000,
+  minSnapshots: 6
+};
 export function calculateFlippingMetrics(item: ItemMapping, price: RawPrice): FlippingMetrics {
   const buyPrice = price.low || 0;
   const sellPrice = price.high || 0;
@@ -39,42 +57,60 @@ export function calculateFlippingMetrics(item: ItemMapping, price: RawPrice): Fl
   };
 }
 export function calculateAdvancedMetrics(
-  item: ItemMapping, 
-  currentPrice: RawPrice, 
-  history: Record<string, RawPrice>[]
+  item: ItemMapping,
+  currentPrice: RawPrice,
+  history: Record<string, RawPrice>[],
+  config: AnalyticsConfig = DEFAULT_ANALYTICS_CONFIG
 ): AdvancedMetrics {
   const itemIdStr = item.id.toString();
-  const midPrices: number[] = [];
-  let changeCount = 0;
-  // Extract history for this specific item
+  const stats = new RollingStats();
+  let tradesObserved = 0;
+  // Iterate history to build stats and estimate real volume
   for (let i = 0; i < history.length; i++) {
     const snap = history[i][itemIdStr];
     if (snap && snap.high && snap.low) {
-      midPrices.push((snap.high + snap.low) / 2);
-      // Count price changes in the last 10 snapshots for volume heuristic
-      if (i < 10 && i > 0) {
+      const mid = (snap.high + snap.low) / 2;
+      stats.add(mid);
+      // Volume Heuristic: Significant price movement in mid-point suggests trade activity
+      if (i > 0) {
         const prevSnap = history[i-1][itemIdStr];
-        if (prevSnap && (prevSnap.high !== snap.high || prevSnap.low !== snap.low)) {
-          changeCount++;
+        if (prevSnap && prevSnap.high && prevSnap.low) {
+          const prevMid = (prevSnap.high + prevSnap.low) / 2;
+          if (Math.abs(mid - prevMid) > config.sensitivityGpPerTrade) {
+            tradesObserved++;
+          }
         }
       }
     }
   }
-  // turnoverRate: 0 to 1 based on frequency of updates in buffer
-  const turnoverRate = midPrices.length > 0 ? Math.min(1, changeCount / Math.min(10, midPrices.length)) : 0.1;
-  // Calculate Standard Deviation
-  let stdDev = 0;
-  if (midPrices.length > 1) {
-    const mean = midPrices.reduce((a, b) => a + b, 0) / midPrices.length;
-    const variance = midPrices.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / midPrices.length;
-    stdDev = Math.sqrt(variance);
-  }
+  const sampleSize = stats.count;
   const currentMid = (currentPrice.high + currentPrice.low) / 2;
-  const historicalVolatility = currentMid > 0 ? (stdDev / currentMid) * 100 : 0;
+  // Calculate historical volatility %
+  const historicalVolatility = currentMid > 0 ? (stats.stdDev / currentMid) * 100 : 0;
+  // Tanh-normalized risk score [0, 1]
+  const riskScore = tanhNormalize(historicalVolatility / 100, config.alphaRisk);
+  // Observed Volume Per Hour (assuming 30s intervals if history is live)
+  // Logic: trades / snapshots * (snapshots per hour)
+  const snapshotsPerHour = 120; // 3600s / 30s
+  const observedVolumePerHour = sampleSize > 1 ? (tradesObserved / sampleSize) * snapshotsPerHour : 5;
+  // Quantitative Profit Per Hour
+  const metrics = calculateFlippingMetrics(item, currentPrice);
+  const effectiveVolume = Math.min(observedVolumePerHour, (item.limit || 1000) / 4, config.humanCap);
+  const riskAdjustedProfit = metrics.margin * effectiveVolume * (1 - config.slippage) * (1 - riskScore);
+  // Global Rank Score
+  const rankScore = calculateRankScore(
+    metrics.margin,
+    observedVolumePerHour,
+    riskScore,
+    item.limit || 1
+  );
   return {
-    turnoverRate,
-    stdDev,
+    turnoverRate: sampleSize > 0 ? tradesObserved / sampleSize : 0.1,
+    stdDev: stats.stdDev,
     historicalVolatility,
-    sampleSize: midPrices.length
+    sampleSize,
+    observedVolumePerHour,
+    riskAdjustedProfit,
+    rankScore
   };
 }

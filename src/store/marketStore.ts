@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { fetchLatestPrices, fetchItemMapping, ItemMapping, RawPrice } from '@/lib/api';
-import { calculateFlippingMetrics, FlippingMetrics, calculateAdvancedMetrics, AdvancedMetrics } from '@/lib/flippingEngine';
+import { calculateFlippingMetrics, FlippingMetrics, calculateAdvancedMetrics, AdvancedMetrics, AnalyticsConfig, DEFAULT_ANALYTICS_CONFIG } from '@/lib/flippingEngine';
 export interface EnrichedItem extends ItemMapping {
     high: number;
     low: number;
@@ -13,10 +13,10 @@ export interface EnrichedItem extends ItemMapping {
 export const UI_THRESHOLDS = {
     highMargin: 10000,
     highRoi: 3,
-    volatilityLow: 5,
-    volatilityHigh: 10
+    volatilityLow: 2,
+    volatilityHigh: 5
 };
-interface ScannerConfig {
+interface ScannerConfig extends AnalyticsConfig {
     minMarginVolume: number;
     maxVolatility: number;
     topN: number;
@@ -62,6 +62,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     searchQuery: '',
     viewPreference: 'table',
     scannerConfig: {
+        ...DEFAULT_ANALYTICS_CONFIG,
         minMarginVolume: 100000,
         maxVolatility: 10,
         topN: 50
@@ -138,11 +139,12 @@ export function enrichItem(
     item: ItemMapping,
     prices: Record<string, RawPrice>,
     favorites: number[],
-    history: Record<string, RawPrice>[] = []
+    history: Record<string, RawPrice>[] = [],
+    config: AnalyticsConfig = DEFAULT_ANALYTICS_CONFIG
 ): EnrichedItem {
     const p = prices[item.id] || { high: 0, low: 0, highTime: 0, lowTime: 0 };
     const metrics = calculateFlippingMetrics(item, p);
-    const advanced = calculateAdvancedMetrics(item, p, history);
+    const advanced = calculateAdvancedMetrics(item, p, history, config);
     return {
         ...item,
         high: metrics.sellPrice || 0,
