@@ -111,11 +111,11 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     loadData: async () => {
         set({ isLoading: true });
         try {
-            const [mapping, latest, v24] = await Promise.all([
-                fetchItemMapping(),
-                fetchLatestPrices(),
-                fetch24hPrices()
-            ]);
+            const mapping = await fetchItemMapping();
+            await new Promise(resolve => setTimeout(resolve, 1100));
+            const latest = await fetchLatestPrices();
+            await new Promise(resolve => setTimeout(resolve, 1100));
+            const v24 = await fetch24hPrices();
             let history: Record<string, RawPrice>[] = [latest];
             let perItemAggs: Record<number, ItemAggregate> = {};
             const saved = localStorage.getItem(PERSISTENCE_KEY);
@@ -163,7 +163,9 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     },
     refreshPrices: async () => {
         try {
-            const [latest, v24] = await Promise.all([fetchLatestPrices(), fetch24hPrices()]);
+            const latest = await fetchLatestPrices();
+            await new Promise(resolve => setTimeout(resolve, 1100));
+            const v24 = await fetch24hPrices();
             get().addSnapshot(latest);
             set({ prices: latest, volumes24h: v24, lastUpdated: Date.now() });
         } catch (error) {

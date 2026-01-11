@@ -1,15 +1,19 @@
 import { Hono } from "hono";
 import { Env } from './core-utils';
+
 export function userRoutes(app: Hono<{ Bindings: Env }>) {
     const WIKI_USER_AGENT = 'RuneTerminal/1.1 (Market Analytics; contact@runeterminal.example.com)';
-    async function fetchWithRetry(url: string, options: RequestInit, retries = 3, backoff = 500): Promise<Response> {
+
+    async function fetchWithRetry(url: string, options: RequestInit, retries = 3, backoff = 1100): Promise<Response> {
         try {
             const response = await fetch(url, options);
-            if (response.status === 429 || (response.status >= 500 && response.status < 600)) {
-                if (retries > 0) {
+            if (!response.ok) {
+                if ((response.status === 429 || (response.status >= 500 && response.status < 600)) && retries > 0) {
+                    console.error(`Proxy retrying ${url} status=${response.status}`);
                     await new Promise(resolve => globalThis.setTimeout(resolve, backoff));
                     return fetchWithRetry(url, options, retries - 1, backoff * 2);
                 }
+                throw new Error(`Upstream error ${response.status}: ${(await response.text()).slice(0,200)}`);
             }
             return response;
         } catch (error) {
@@ -20,39 +24,46 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
             throw error;
         }
     }
+
     app.get('/api/proxy/latest', async (c) => {
         try {
             const response = await fetchWithRetry('https://prices.runescape.wiki/api/v1/osrs/latest', {
                 headers: { 'User-Agent': WIKI_USER_AGENT }
             });
+            if (!response.ok) throw new Error(`Latest proxy failed: ${response.status}`);
             const data = await response.json();
             return c.json(data);
         } catch (error) {
             return c.json({ error: 'Failed to fetch latest prices' }, 500);
         }
     });
+
     app.get('/api/proxy/24h', async (c) => {
         try {
             const response = await fetchWithRetry('https://prices.runescape.wiki/api/v1/osrs/24h', {
                 headers: { 'User-Agent': WIKI_USER_AGENT }
             });
+            if (!response.ok) throw new Error(`24h proxy failed: ${response.status}`);
             const data = await response.json();
             return c.json(data);
         } catch (error) {
             return c.json({ error: 'Failed to fetch 24h volume data' }, 500);
         }
     });
+
     app.get('/api/proxy/mapping', async (c) => {
         try {
             const response = await fetchWithRetry('https://prices.runescape.wiki/api/v1/osrs/mapping', {
                 headers: { 'User-Agent': WIKI_USER_AGENT }
             });
+            if (!response.ok) throw new Error(`Mapping proxy failed: ${response.status}`);
             const data = await response.json();
             return c.json(data);
         } catch (error) {
             return c.json({ error: 'Failed to fetch mapping' }, 500);
         }
     });
+
     app.get('/api/proxy/timeseries', async (c) => {
         const id = c.req.query('id');
         const timestep = c.req.query('timestep') || '5m';
@@ -60,12 +71,14 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
         try {
             const url = `https://prices.runescape.wiki/api/v1/osrs/timeseries?id=${id}&timestep=${timestep}`;
             const response = await fetchWithRetry(url, { headers: { 'User-Agent': WIKI_USER_AGENT } });
+            if (!response.ok) throw new Error(`Timeseries proxy failed: ${response.status}`);
             const data = await response.json();
             return c.json(data);
         } catch (error) {
             return c.json({ error: 'Failed to fetch timeseries' }, 500);
         }
     });
+
     app.get('/api/flip-recs', async (c) => {
         const capitalStr = c.req.query('capital') || '10m';
         const risk = c.req.query('risk') || 'moderate';
@@ -79,13 +92,20 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
             meta: { capitalStr, risk, horizon, focus }
         });
     });
+
     app.get('/api/export-csv', async (c) => {
         try {
-            const [mapRes, latestRes, volRes] = await Promise.all([
-                fetch('https://prices.runescape.wiki/api/v1/osrs/mapping', { headers: { 'User-Agent': WIKI_USER_AGENT } }),
-                fetch('https://prices.runescape.wiki/api/v1/osrs/latest', { headers: { 'User-Agent': WIKI_USER_AGENT } }),
-                fetch('https://prices.runescape.wiki/api/v1/osrs/24h', { headers: { 'User-Agent': WIKI_USER_AGENT } })
-            ]);
+            const mapRes = await fetchWithRetry('https://prices.runescape.wiki/api/v1/osrs/mapping', { headers: { 'User-Agent': WIKI_USER_AGENT } });
+            if (!mapRes.ok) throw new Error(`Mapping fetch failed: ${mapRes.status}`);
+            await new Promise(resolve => globalThis.setTimeout(resolve, 1100));
+
+            const latestRes = await fetchWithRetry('https://prices.runescape.wiki/api/v1/osrs/latest', { headers: { 'User-Agent': WIKI_USER_AGENT } });
+            if (!latestRes.ok) throw new Error(`Latest fetch failed: ${latestRes.status}`);
+            await new Promise(resolve => globalThis.setTimeout(resolve, 1100));
+
+            const volRes = await fetchWithRetry('https://prices.runescape.wiki/api/v1/osrs/24h', { headers: { 'User-Agent': WIKI_USER_AGENT } });
+            if (!volRes.ok) throw new Error(`24h fetch failed: ${volRes.status}`);
+
             const mapping = (await mapRes.json()) as any[];
             const latestData = (await latestRes.json()) as { data: Record<string, any> };
             const volumesData = (await volRes.json()) as { data: Record<string, any> };
@@ -116,3 +136,4 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
         }
     });
 }
+//
