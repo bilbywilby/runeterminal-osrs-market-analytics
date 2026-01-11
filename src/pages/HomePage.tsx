@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { RetroLayout } from '@/components/layout/RetroLayout';
 import { MarketTicker } from '@/components/market/MarketTicker';
 import { ItemGrid } from '@/components/market/ItemGrid';
@@ -14,23 +14,31 @@ export function HomePage() {
     const setSearchQuery = useMarketStore(s => s.setSearchQuery);
     const lastUpdated = useMarketStore(s => s.lastUpdated);
     const [isSyncing, setIsSyncing] = useState(false);
+    const prevSearchRef = useRef(searchQuery);
     useEffect(() => {
         loadData();
         const interval = setInterval(() => {
-            refreshPrices();
+            // Prevent auto-refresh if manual sync is ongoing
+            if (!isSyncing) {
+                refreshPrices();
+            }
         }, 30000);
         return () => clearInterval(interval);
-    }, [loadData, refreshPrices]);
+    }, [loadData, refreshPrices, isSyncing]);
     useEffect(() => {
-        if (searchQuery) {
+        if (searchQuery && searchQuery !== prevSearchRef.current) {
             window.scrollTo({ top: 0, behavior: 'smooth' });
+            prevSearchRef.current = searchQuery;
         }
     }, [searchQuery]);
     const handleManualRefresh = async () => {
+        if (isSyncing) return;
         setIsSyncing(true);
         try {
             await refreshPrices();
             toast.success('UPLINK_SYNC_SUCCESSFUL');
+        } catch {
+            toast.error('UPLINK_SYNC_FAILED');
         } finally {
             setIsSyncing(false);
         }

@@ -50,7 +50,13 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     items: [],
     prices: {},
     history: [],
-    favorites: JSON.parse(localStorage.getItem(STORAGE_KEY_FAVORITES) || '[]'),
+    favorites: (() => {
+        try {
+            return JSON.parse(localStorage.getItem(STORAGE_KEY_FAVORITES) || '[]');
+        } catch {
+            return [];
+        }
+    })(),
     isLoading: false,
     lastUpdated: 0,
     searchQuery: '',
@@ -78,8 +84,11 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     addSnapshot: (newPrices) => {
         set((state) => {
             const updatedHistory = [newPrices, ...state.history].slice(0, MAX_HISTORY_LENGTH);
-            // Persist a smaller slice to avoid localStorage quota issues
-            localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(updatedHistory.slice(0, PERSIST_HISTORY_LIMIT)));
+            try {
+                localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(updatedHistory.slice(0, PERSIST_HISTORY_LIMIT)));
+            } catch (e) {
+                console.warn('[STORAGE_QUOTA]: Failed to persist history snapshot', e);
+            }
             return { history: updatedHistory };
         });
     },
@@ -91,7 +100,12 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     loadData: async () => {
         set({ isLoading: true });
         try {
-            const savedHistory = JSON.parse(localStorage.getItem(STORAGE_KEY_HISTORY) || '[]');
+            let savedHistory = [];
+            try {
+                savedHistory = JSON.parse(localStorage.getItem(STORAGE_KEY_HISTORY) || '[]');
+            } catch {
+                savedHistory = [];
+            }
             const [mapping, latestPrices] = await Promise.all([
                 fetchItemMapping(),
                 fetchLatestPrices()
@@ -99,7 +113,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             set({
                 items: mapping,
                 prices: latestPrices,
-                history: savedHistory.length > 0 ? savedHistory : [latestPrices],
+                history: Array.isArray(savedHistory) && savedHistory.length > 0 ? savedHistory : [latestPrices],
                 isLoading: false,
                 lastUpdated: Date.now()
             });
@@ -114,7 +128,6 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             const { addSnapshot, onPricesUpdateListeners } = get();
             addSnapshot(latestPrices);
             set({ prices: latestPrices, lastUpdated: Date.now() });
-            // Fire event bus
             onPricesUpdateListeners.forEach(cb => cb());
         } catch (error) {
             console.error('Failed to refresh prices', error);
@@ -122,8 +135,8 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     }
 }));
 export function enrichItem(
-    item: ItemMapping, 
-    prices: Record<string, RawPrice>, 
+    item: ItemMapping,
+    prices: Record<string, RawPrice>,
     favorites: number[],
     history: Record<string, RawPrice>[] = []
 ): EnrichedItem {

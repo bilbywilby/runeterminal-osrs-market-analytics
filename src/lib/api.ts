@@ -32,7 +32,7 @@ function validateApiResponse<T>(data: any, validator: (d: any) => boolean, error
 export async function fetchLatestPrices(): Promise<Record<string, RawPrice>> {
     try {
         const response = await fetch('/api/proxy/latest');
-        if (!response.ok) throw new Error(`HTTP_${response.status}`);
+        if (!response.ok) throw new Error(`HTTP_${response.status}_LATEST`);
         const json = await response.json();
         return validateApiResponse<Record<string, RawPrice>>(
             json.data,
@@ -47,7 +47,7 @@ export async function fetchLatestPrices(): Promise<Record<string, RawPrice>> {
 export async function fetchItemMapping(): Promise<ItemMapping[]> {
     try {
         const response = await fetch('/api/proxy/mapping');
-        if (!response.ok) throw new Error(`HTTP_${response.status}`);
+        if (!response.ok) throw new Error(`HTTP_${response.status}_MAPPING`);
         const data = await response.json();
         return validateApiResponse<ItemMapping[]>(
             data,
@@ -62,9 +62,13 @@ export async function fetchItemMapping(): Promise<ItemMapping[]> {
 export async function fetchItemTimeseries(id: number, timestep: string = '5m'): Promise<TimeseriesPoint[]> {
     try {
         const response = await fetch(`/api/proxy/timeseries?id=${id}&timestep=${timestep}`);
-        if (!response.ok) throw new Error(`HTTP_${response.status}`);
+        if (!response.ok) throw new Error(`HTTP_${response.status}_TIMESERIES`);
         const json = await response.json();
-        return json.data || [];
+        if (!json.data || !Array.isArray(json.data)) {
+            console.warn(`[API_WARNING]: Empty or malformed timeseries for item ${id}`);
+            return [];
+        }
+        return json.data;
     } catch (err) {
         console.error(`[UPLINK_FAILURE]: fetchItemTimeseries id=${id}`, err);
         return [];

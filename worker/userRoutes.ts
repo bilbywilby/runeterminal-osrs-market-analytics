@@ -25,7 +25,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     const checkRateLimit = (ip: string) => {
         const now = Date.now();
         const lastRequest = rateLimitMap.get(ip) || 0;
-        if (now - lastRequest < 500) return false; // 0.5s soft limit per IP
+        if (lastRequest !== 0 && now - lastRequest < 500) return false; // 0.5s soft limit per IP
         rateLimitMap.set(ip, now);
         return true;
     };
@@ -36,7 +36,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
             const response = await fetchWithRetry('https://prices.runescape.wiki/api/v1/osrs/latest', {
                 headers: { 'User-Agent': WIKI_USER_AGENT }
             });
-            const data = await response.json();
+            const data = await response.json() as { data?: Record<string, any> };
             if (!data || typeof data !== 'object' || !data.data) {
                 return c.json({ error: 'Invalid response from upstream' }, 502);
             }
