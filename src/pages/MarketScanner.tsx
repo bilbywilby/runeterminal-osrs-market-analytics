@@ -1,13 +1,14 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { RetroLayout } from '@/components/layout/RetroLayout';
-import { useMarketStore, enrichItem, UI_THRESHOLDS } from '@/store/marketStore';
-import { Search, LayoutGrid, List, TrendingUp, AlertTriangle, Zap, Activity } from 'lucide-react';
+import { useMarketStore, enrichItem, UI_THRESHOLDS, EnrichedItem } from '@/store/marketStore';
+import { Search, LayoutGrid, List, Zap, TrendingUp } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { motion, AnimatePresence } from 'framer-motion';
 export function MarketScanner() {
     const rawItems = useMarketStore(s => s.items);
     const prices = useMarketStore(s => s.prices);
@@ -18,49 +19,68 @@ export function MarketScanner() {
     const setViewPreference = useMarketStore(s => s.setViewPreference);
     const scannerConfig = useMarketStore(s => s.scannerConfig);
     const updateScannerConfig = useMarketStore(s => s.updateScannerConfig);
+    const lastUpdated = useMarketStore(s => s.lastUpdated);
+    const [pulse, setPulse] = useState(false);
+    useEffect(() => {
+        if (lastUpdated) {
+            setPulse(true);
+            const timer = setTimeout(() => setPulse(false), 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [lastUpdated]);
     const results = useMemo(() => {
         const query = searchQuery.toLowerCase();
         return rawItems
             .filter(item => item.name.toLowerCase().includes(query))
             .map(item => enrichItem(item, prices, favorites))
-            .filter(item => 
-                item.metrics.marginVolume >= scannerConfig.minMarginVolume && 
-                item.metrics.volatilityScore <= scannerConfig.maxVolatility
+            .filter(item =>
+                item.metrics.marginVolume >= (scannerConfig.minMarginVolume || 0) &&
+                item.metrics.volatilityScore <= (scannerConfig.maxVolatility || 100)
             )
             .sort((a, b) => b.metrics.marginVolume - a.metrics.marginVolume)
-            .slice(0, scannerConfig.topN);
+            .slice(0, scannerConfig.topN || 50);
     }, [rawItems, prices, favorites, searchQuery, scannerConfig]);
     const getVolatilityColor = (score: number) => {
         if (score < UI_THRESHOLDS.volatilityLow) return 'text-terminal-green';
         if (score < UI_THRESHOLDS.volatilityHigh) return 'text-terminal-amber';
         return 'text-terminal-red';
     };
-    const isHighValue = (margin: number, roi: number) => 
+    const isHighValue = (margin: number, roi: number) =>
         margin >= UI_THRESHOLDS.highMargin && roi >= UI_THRESHOLDS.highRoi;
     return (
         <RetroLayout>
-            <div className="max-w-7xl mx-auto space-y-8 px-4 py-4 md:py-6">
+            <div className="max-w-7xl mx-auto space-y-8 px-4 py-4 md:py-6 relative">
+                <AnimatePresence>
+                    {pulse && (
+                        <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 0.1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 bg-terminal-green pointer-events-none z-[60]"
+                        />
+                    )}
+                </AnimatePresence>
                 <div className="flex flex-col md:flex-row justify-between items-end gap-6 border-b border-terminal-green/20 pb-6">
                     <div className="space-y-1 flex-1 w-full">
                         <h1 className="text-3xl font-black tracking-tighter uppercase glow-text flex items-center gap-3">
                             <Zap className="text-terminal-amber fill-terminal-amber/20" />
                             Quantum_Flipper_Panel
                         </h1>
-                        <p className="text-[10px] text-terminal-green/50 font-mono">LIQUIDITY_HEURISTICS: ENGAGED // RANKING_BY_MARGIN_VOLUME</p>
+                        <p className="text-[10px] text-terminal-green/50 font-mono uppercase">Liquidity_Heuristics: {pulse ? 'SYNCING_LIVE' : 'IDLE'} // Ranking_By_Margin_Volume</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-4">
                         <div className="flex bg-terminal-green/5 border border-terminal-green/20 p-1">
-                            <Button 
-                                variant="ghost" 
-                                size="sm" 
+                            <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => setViewPreference('table')}
                                 className={cn("rounded-none h-8 w-10 p-0", viewPreference === 'table' && "bg-terminal-green text-terminal-black")}
                             >
                                 <List size={16} />
                             </Button>
-                            <Button 
-                                variant="ghost" 
-                                size="sm" 
+                            <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => setViewPreference('grid')}
                                 className={cn("rounded-none h-8 w-10 p-0", viewPreference === 'grid' && "bg-terminal-green text-terminal-black")}
                             >
@@ -72,21 +92,18 @@ export function MarketScanner() {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-terminal-green/5 border border-terminal-green/20 p-4">
                     <div className="space-y-1">
                         <label className="text-[9px] font-mono text-terminal-green/70 uppercase">Search_Buffer</label>
-                        <div className="relative">
-                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-terminal-green/40" size={14} />
-                            <Input
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="IDENTIFY_ASSET..."
-                                className="bg-terminal-black border-terminal-green/30 h-9 pl-8 rounded-none text-terminal-green font-mono text-xs uppercase"
-                            />
-                        </div>
+                        <Input
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="IDENTIFY_ASSET..."
+                            className="bg-terminal-black border-terminal-green/30 h-9 rounded-none text-terminal-green font-mono text-xs uppercase"
+                        />
                     </div>
                     <div className="space-y-1">
                         <label className="text-[9px] font-mono text-terminal-green/70 uppercase">Min_M×V (GP)</label>
                         <Input
                             type="number"
-                            value={scannerConfig.minMarginVolume}
+                            value={scannerConfig.minMarginVolume || ''}
                             onChange={(e) => updateScannerConfig({ minMarginVolume: Number(e.target.value) })}
                             className="bg-terminal-black border-terminal-green/30 h-9 rounded-none text-terminal-green font-mono text-xs"
                         />
@@ -95,7 +112,7 @@ export function MarketScanner() {
                         <label className="text-[9px] font-mono text-terminal-green/70 uppercase">Max_Volatility (%)</label>
                         <Input
                             type="number"
-                            value={scannerConfig.maxVolatility}
+                            value={scannerConfig.maxVolatility || ''}
                             onChange={(e) => updateScannerConfig({ maxVolatility: Number(e.target.value) })}
                             className="bg-terminal-black border-terminal-green/30 h-9 rounded-none text-terminal-green font-mono text-xs"
                         />
@@ -104,7 +121,7 @@ export function MarketScanner() {
                         <label className="text-[9px] font-mono text-terminal-green/70 uppercase">Display_Limit (N)</label>
                         <Input
                             type="number"
-                            value={scannerConfig.topN}
+                            value={scannerConfig.topN || ''}
                             onChange={(e) => updateScannerConfig({ topN: Number(e.target.value) })}
                             className="bg-terminal-black border-terminal-green/30 h-9 rounded-none text-terminal-green font-mono text-xs"
                         />
@@ -112,14 +129,14 @@ export function MarketScanner() {
                 </div>
                 {viewPreference === 'table' ? (
                     <div className="overflow-x-auto border border-terminal-green/20 bg-terminal-black">
-                        <table className="w-full text-left font-mono text-[11px] border-collapse">
+                        <table className="w-full text-left font-mono text-[11px] border-collapse min-w-[600px]">
                             <thead>
                                 <tr className="bg-terminal-green/10 border-b border-terminal-green/20">
-                                    <th className="p-3 text-terminal-green/50">ASSET_MAPPING</th>
+                                    <th className="p-3 text-terminal-green/50">ASSET_MAPPING <span className="text-[8px] text-terminal-amber ml-1">[ALPHA_SORT]</span></th>
                                     <th className="p-3 text-right">BUY</th>
                                     <th className="p-3 text-right">SELL</th>
                                     <th className="p-3 text-right">MARGIN</th>
-                                    <th className="p-3 text-right text-terminal-amber">M×V (P_CAP)</th>
+                                    <th className="p-3 text-right text-terminal-amber font-bold">M×V <TrendingUp size={10} className="inline ml-1" /></th>
                                     <th className="p-3 text-right text-terminal-green">ROI%</th>
                                     <th className="p-3 text-right">VOLATILITY</th>
                                 </tr>
@@ -129,7 +146,7 @@ export function MarketScanner() {
                                     <tr key={item.id} className="border-b border-terminal-green/5 hover:bg-terminal-green/5 transition-colors group h-12">
                                         <td className="p-3">
                                             <Link to={`/item/${item.id}`} className="flex items-center gap-2 text-terminal-green hover:underline font-bold uppercase truncate max-w-[180px]">
-                                                <img src={`https://static.runescape.wiki/images/${item.icon.replace(/ /g, '_')}`} className="w-5 h-5" alt="" />
+                                                <ItemIconSmall item={item} />
                                                 {item.name}
                                             </Link>
                                         </td>
@@ -159,8 +176,8 @@ export function MarketScanner() {
                                 <Card className="bg-terminal-black border-terminal-green/30 rounded-none p-4 hover:border-terminal-green transition-all group h-full flex flex-col gap-4">
                                     <div className="flex justify-between items-start">
                                         <div className="flex gap-2">
-                                            <div className="p-1 border border-terminal-green/20 bg-terminal-green/5">
-                                                <img src={`https://static.runescape.wiki/images/${item.icon.replace(/ /g, '_')}`} className="w-8 h-8 object-contain" alt="" />
+                                            <div className="p-1 border border-terminal-green/20 bg-terminal-green/5 w-10 h-10 flex items-center justify-center">
+                                                <ItemIconSmall item={item} size="w-8 h-8" />
                                             </div>
                                             <div>
                                                 <h3 className="font-bold text-xs uppercase group-hover:animate-text-glitch truncate max-w-[100px]">{item.name}</h3>
@@ -196,5 +213,23 @@ export function MarketScanner() {
                 )}
             </div>
         </RetroLayout>
+    );
+}
+function ItemIconSmall({ item, size = "w-5 h-5" }: { item: EnrichedItem, size?: string }) {
+    const [failed, setFailed] = useState(false);
+    if (failed) {
+        return (
+            <div className={cn("flex items-center justify-center bg-terminal-green/10 text-terminal-green font-bold text-[10px] font-mono shrink-0", size)}>
+                {item.name.charAt(0).toUpperCase()}
+            </div>
+        );
+    }
+    return (
+        <img
+            src={`https://static.runescape.wiki/images/${item.icon.replace(/ /g, '_')}`}
+            alt=""
+            className={cn("object-contain shrink-0", size)}
+            onError={() => setFailed(true)}
+        />
     );
 }

@@ -32,6 +32,7 @@ interface MarketState {
     loadData: () => Promise<void>;
     refreshPrices: () => Promise<void>;
     setSearchQuery: (query: string) => void;
+    resetSearch: () => void;
     toggleFavorite: (id: number) => void;
     setViewPreference: (pref: 'table' | 'grid') => void;
     updateScannerConfig: (config: Partial<ScannerConfig>) => void;
@@ -46,14 +47,15 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     searchQuery: '',
     viewPreference: 'table',
     scannerConfig: {
-        minMarginVolume: 1000000,
+        minMarginVolume: 100000,
         maxVolatility: 10,
         topN: 50
     },
     setSearchQuery: (query) => set({ searchQuery: query }),
+    resetSearch: () => set({ searchQuery: '' }),
     setViewPreference: (viewPreference) => set({ viewPreference }),
-    updateScannerConfig: (config) => set((state) => ({ 
-        scannerConfig: { ...state.scannerConfig, ...config } 
+    updateScannerConfig: (config) => set((state) => ({
+        scannerConfig: { ...state.scannerConfig, ...config }
     })),
     toggleFavorite: (id) => {
         const currentFavorites = get().favorites;
@@ -95,10 +97,10 @@ export function enrichItem(item: ItemMapping, prices: Record<string, RawPrice>, 
     const metrics = calculateFlippingMetrics(item, p);
     return {
         ...item,
-        high: metrics.sellPrice,
-        low: metrics.buyPrice,
-        margin: metrics.margin,
-        roi: metrics.roi,
+        high: metrics.sellPrice || 0,
+        low: metrics.buyPrice || 0,
+        margin: metrics.margin || 0,
+        roi: metrics.roi || 0,
         isFavorite: favorites.includes(item.id),
         metrics
     };

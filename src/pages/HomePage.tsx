@@ -1,9 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { RetroLayout } from '@/components/layout/RetroLayout';
 import { MarketTicker } from '@/components/market/MarketTicker';
 import { ItemGrid } from '@/components/market/ItemGrid';
 import { useMarketStore } from '@/store/marketStore';
-import { Search, RotateCcw } from 'lucide-react';
+import { Search, RotateCcw, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Toaster, toast } from 'sonner';
@@ -13,14 +13,28 @@ export function HomePage() {
     const searchQuery = useMarketStore(s => s.searchQuery);
     const setSearchQuery = useMarketStore(s => s.setSearchQuery);
     const lastUpdated = useMarketStore(s => s.lastUpdated);
+    const [isSyncing, setIsSyncing] = useState(false);
     useEffect(() => {
         loadData();
         const interval = setInterval(() => {
             refreshPrices();
-            toast.info('UPDATING_FREQUENCIES...');
         }, 30000);
         return () => clearInterval(interval);
     }, [loadData, refreshPrices]);
+    useEffect(() => {
+        if (searchQuery) {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    }, [searchQuery]);
+    const handleManualRefresh = async () => {
+        setIsSyncing(true);
+        try {
+            await refreshPrices();
+            toast.success('UPLINK_SYNC_SUCCESSFUL');
+        } finally {
+            setIsSyncing(false);
+        }
+    };
     return (
         <RetroLayout>
             <MarketTicker />
@@ -31,7 +45,7 @@ export function HomePage() {
                     </label>
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-terminal-green/50" size={18} />
-                        <Input 
+                        <Input
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder="SEARCH_GRAND_EXCHANGE..."
@@ -40,13 +54,23 @@ export function HomePage() {
                     </div>
                 </div>
                 <div className="flex gap-2 w-full md:w-auto">
-                    <Button 
-                        onClick={() => refreshPrices()}
+                    <Button
+                        onClick={handleManualRefresh}
+                        disabled={isSyncing}
                         variant="outline"
-                        className="border-terminal-green/30 text-terminal-green hover:bg-terminal-green/10 rounded-none h-12 font-mono"
+                        className="border-terminal-green/30 text-terminal-green hover:bg-terminal-green/10 rounded-none h-12 font-mono min-w-[140px]"
                     >
-                        <RotateCcw className="mr-2" size={16} />
-                        RE-SYNC
+                        {isSyncing ? (
+                            <>
+                                <Loader2 className="mr-2 animate-spin" size={16} />
+                                SYNCING...
+                            </>
+                        ) : (
+                            <>
+                                <RotateCcw className="mr-2" size={16} />
+                                RE-SYNC
+                            </>
+                        )}
                     </Button>
                 </div>
             </div>
