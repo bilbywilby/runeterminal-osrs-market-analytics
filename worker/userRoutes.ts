@@ -83,9 +83,11 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
                 fetch('https://prices.runescape.wiki/api/v1/osrs/latest', { headers: { 'User-Agent': WIKI_USER_AGENT } }),
                 fetch('https://prices.runescape.wiki/api/v1/osrs/24h', { headers: { 'User-Agent': WIKI_USER_AGENT } })
             ]);
-            const mapping = await mapRes.json() as any[];
-            const latest = (await latestRes.json()).data as Record<string, any>;
-            const volumes = (await volRes.json()).data as Record<string, any>;
+            const mapping = (await mapRes.json()) as any[];
+            const latestData = (await latestRes.json()) as { data: Record<string, any> };
+            const volumesData = (await volRes.json()) as { data: Record<string, any> };
+            const latest = latestData.data;
+            const volumes = volumesData.data;
             let csv = "name,buy,sell,profit_per_item,limit,vol24h,potential_profit\n";
             mapping.forEach(item => {
                 const p = latest[item.id];

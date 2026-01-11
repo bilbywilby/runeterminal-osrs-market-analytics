@@ -15,20 +15,27 @@ export function HomePage() {
     const lastUpdated = useMarketStore(s => s.lastUpdated);
     const historyLength = useMarketStore(s => s.history.length);
     const [isSyncing, setIsSyncing] = useState(false);
+    // Phase 11: Decoupled mount loading
     useEffect(() => {
         loadData();
+    }, [loadData]);
+    // Phase 11: Heartbeat sync effect with proper dependency tracking
+    useEffect(() => {
         const interval = setInterval(() => {
-            if (!isSyncing) refreshPrices();
+            if (!isSyncing) {
+                refreshPrices().catch(err => console.error("Auto-sync failed", err));
+            }
         }, 30000);
         return () => clearInterval(interval);
-    }, [loadData, refreshPrices]);
+    }, [isSyncing, refreshPrices]);
     const handleManualRefresh = async () => {
         if (isSyncing) return;
         setIsSyncing(true);
         try {
             await refreshPrices();
             toast.success('UPLINK_SYNC_SUCCESSFUL');
-        } catch {
+        } catch (error) {
+            console.error("Manual refresh error", error);
             toast.error('UPLINK_SYNC_FAILED');
         } finally {
             setIsSyncing(false);

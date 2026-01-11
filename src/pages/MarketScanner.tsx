@@ -1,11 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { RetroLayout } from '@/components/layout/RetroLayout';
-import { useMarketStore, enrichItem, EnrichedItem } from '@/store/marketStore';
-import { Search, LayoutGrid, List, Zap, Database, SlidersHorizontal, Download, Play, TriangleAlert } from 'lucide-react';
+import { useMarketStore, enrichItem } from '@/store/marketStore';
+import { Search, Zap, Database, SlidersHorizontal, Download, Play, TriangleAlert } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
-import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { downloadMarketCsv } from '@/lib/api';
 import { runBacktestSim } from '@/lib/flippingEngine';
@@ -17,13 +16,12 @@ export function MarketScanner() {
     const favorites = useMarketStore(s => s.favorites);
     const searchQuery = useMarketStore(s => s.searchQuery);
     const setSearchQuery = useMarketStore(s => s.setSearchQuery);
-    const viewPreference = useMarketStore(s => s.viewPreference);
-    const setViewPreference = useMarketStore(s => s.setViewPreference);
     const scannerConfig = useMarketStore(s => s.scannerConfig);
     const updateScannerConfig = useMarketStore(s => s.updateScannerConfig);
     const [showConfig, setShowConfig] = useState(false);
     const results = useMemo(() => {
         const query = searchQuery.toLowerCase();
+        // Phase 11: Safety handling for empty buffer
         return rawItems
             .filter(item => item.name.toLowerCase().includes(query))
             .map(item => enrichItem(item, prices, favorites, history, scannerConfig, volumes24h))
@@ -62,6 +60,15 @@ export function MarketScanner() {
                         </Button>
                     </div>
                 </div>
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-terminal-green/50" size={18} />
+                    <Input
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="FILTER_SCAN_RESULTS..."
+                        className="bg-terminal-black border-terminal-green/30 text-terminal-green rounded-none pl-10 h-12 font-mono uppercase"
+                    />
+                </div>
                 <AnimatePresence>
                     {showConfig && (
                         <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 bg-terminal-green/5 border border-terminal-green/20 p-4 font-mono overflow-hidden">
@@ -83,7 +90,7 @@ export function MarketScanner() {
                                     <th className="p-3 text-right">NET_MARGIN</th>
                                     <th className="p-3 text-right">VOL_24H</th>
                                     <th className="p-3 text-right text-terminal-amber">POTENTIAL_GP</th>
-                                    <th className="p-3 text-right">VOL %</th>
+                                    <th className="p-3 text-right">HIST_VOL %</th>
                                     <th className="p-3 text-right text-terminal-green">RANK</th>
                                 </tr>
                             </thead>
@@ -100,7 +107,9 @@ export function MarketScanner() {
                                         <td className="p-3 text-right text-terminal-amber font-bold">
                                             {item.metrics.potentialProfit > 1e6 ? `${(item.metrics.potentialProfit/1e6).toFixed(1)}M` : item.metrics.potentialProfit.toLocaleString()}
                                         </td>
-                                        <td className="p-3 text-right">{item.advanced.historicalVolatility.toFixed(2)}%</td>
+                                        <td className="p-3 text-right">
+                                            {item.advanced.historicalVolatility.toFixed(2)}%
+                                        </td>
                                         <td className="p-3 text-right text-terminal-green font-bold">{item.advanced.rankScore.toFixed(2)}</td>
                                     </tr>
                                 ))}

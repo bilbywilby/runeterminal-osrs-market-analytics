@@ -103,6 +103,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                 lastUpdated: Date.now()
             });
         } catch (error) {
+            console.error("Initial load failure", error);
             set({ isLoading: false });
         }
     },
@@ -111,7 +112,9 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             const [latest, v24] = await Promise.all([fetchLatestPrices(), fetch24hPrices()]);
             get().addSnapshot(latest);
             set({ prices: latest, volumes24h: v24, lastUpdated: Date.now() });
-        } catch {}
+        } catch (error) {
+            console.error("Market refresh cycle failure", error);
+        }
     }
 }));
 export function enrichItem(
