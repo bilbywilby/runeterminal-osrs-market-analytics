@@ -13,6 +13,7 @@ export function MarketScanner() {
     const prices = useMarketStore(s => s.prices);
     const volumes24h = useMarketStore(s => s.volumes24h);
     const history = useMarketStore(s => s.history);
+    const perItemAggs = useMarketStore(s => s.perItemAggs);
     const favorites = useMarketStore(s => s.favorites);
     const searchQuery = useMarketStore(s => s.searchQuery);
     const setSearchQuery = useMarketStore(s => s.setSearchQuery);
@@ -21,18 +22,17 @@ export function MarketScanner() {
     const [showConfig, setShowConfig] = useState(false);
     const results = useMemo(() => {
         const query = searchQuery.toLowerCase();
-        // Phase 11: Safety handling for empty buffer
         return rawItems
             .filter(item => item.name.toLowerCase().includes(query))
-            .map(item => enrichItem(item, prices, favorites, history, scannerConfig, volumes24h))
+            .map(item => enrichItem(item, prices, favorites, history, scannerConfig, volumes24h, perItemAggs))
             .filter(item => {
                 const vol = item.advanced.historicalVolatility;
                 const pot = item.metrics.potentialProfit;
                 return pot >= (scannerConfig.minMarginVolume || 0) && vol <= (scannerConfig.maxVolatility || 100);
             })
-            .sort((a, b) => b.metrics.potentialProfit - a.metrics.potentialProfit)
+            .sort((a, b) => b.advanced.rankScore - a.advanced.rankScore)
             .slice(0, scannerConfig.topN || 50);
-    }, [rawItems, prices, favorites, history, searchQuery, scannerConfig, volumes24h]);
+    }, [rawItems, prices, favorites, history, searchQuery, scannerConfig, volumes24h, perItemAggs]);
     return (
         <RetroLayout>
             <div className="max-w-7xl mx-auto space-y-6">
@@ -42,7 +42,7 @@ export function MarketScanner() {
                             <Zap className="text-terminal-amber" /> Quantum_Scanner_X
                         </h1>
                         <div className="flex items-center gap-4 text-[10px] text-terminal-green/50 font-mono">
-                            <span>ALGO: POTENTIAL_PROFIT_WEIGHTED</span>
+                            <span>ALGO: QUANT_RANK_WEIGHTED</span>
                             <span className="text-terminal-amber flex items-center gap-1">
                                 <Database size={10} /> BUFFER: {history.length} SNAPS
                             </span>
@@ -72,12 +72,12 @@ export function MarketScanner() {
                 <AnimatePresence>
                     {showConfig && (
                         <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 bg-terminal-green/5 border border-terminal-green/20 p-4 font-mono overflow-hidden">
-                            <ConfigField label="WEIGHT_MARGIN" value={scannerConfig.weightMargin} onChange={v => updateScannerConfig({ weightMargin: v })} />
-                            <ConfigField label="WEIGHT_VOL" value={scannerConfig.weightVolume} onChange={v => updateScannerConfig({ weightVolume: v })} />
-                            <ConfigField label="WEIGHT_RISK" value={scannerConfig.weightRisk} onChange={v => updateScannerConfig({ weightRisk: v })} />
-                            <ConfigField label="MIN_POTENTIAL" value={scannerConfig.minMarginVolume} onChange={v => updateScannerConfig({ minMarginVolume: v })} />
-                            <ConfigField label="MAX_VOL %" value={scannerConfig.maxVolatility} onChange={v => updateScannerConfig({ maxVolatility: v })} />
-                            <ConfigField label="SLIPPAGE %" value={scannerConfig.slippage * 100} onChange={v => updateScannerConfig({ slippage: v / 100 })} />
+                            <ConfigField label="W_MARGIN" value={scannerConfig.weightMargin} onChange={v => updateScannerConfig({ weightMargin: v })} />
+                            <ConfigField label="W_VOL" value={scannerConfig.weightVolume} onChange={v => updateScannerConfig({ weightVolume: v })} />
+                            <ConfigField label="W_RISK" value={scannerConfig.weightRisk} onChange={v => updateScannerConfig({ weightRisk: v })} />
+                            <ConfigField label="MIN_POT" value={scannerConfig.minMarginVolume} onChange={v => updateScannerConfig({ minMarginVolume: v })} />
+                            <ConfigField label="MAX_VOL%" value={scannerConfig.maxVolatility} onChange={v => updateScannerConfig({ maxVolatility: v })} />
+                            <ConfigField label="SLIP%" value={scannerConfig.slippage * 100} onChange={v => updateScannerConfig({ slippage: v / 100 })} />
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -91,7 +91,7 @@ export function MarketScanner() {
                                     <th className="p-3 text-right">VOL_24H</th>
                                     <th className="p-3 text-right text-terminal-amber">POTENTIAL_GP</th>
                                     <th className="p-3 text-right">HIST_VOL %</th>
-                                    <th className="p-3 text-right text-terminal-green">RANK</th>
+                                    <th className="p-3 text-right text-terminal-green">QUANT_RANK</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -116,7 +116,10 @@ export function MarketScanner() {
                             </tbody>
                         </table>
                     ) : (
-                        <div className="p-20 flex flex-col items-center opacity-50"><TriangleAlert className="mb-2 text-terminal-amber" /> ZERO_DATA_IN_BUFFER</div>
+                        <div className="p-20 flex flex-col items-center opacity-50">
+                            <TriangleAlert className="mb-2 text-terminal-amber" /> 
+                            ZERO_DATA_IN_BUFFER_MATCHING_QUANT_CONSTRAINTS
+                        </div>
                     )}
                 </div>
             </div>

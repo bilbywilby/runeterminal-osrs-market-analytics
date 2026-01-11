@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { fetchLatestPrices, fetchItemMapping, fetch24hPrices, ItemMapping, RawPrice, Volume24h } from '@/lib/api';
 import { calculateFlippingMetrics, FlippingMetrics, calculateAdvancedMetrics, AdvancedMetrics, AnalyticsConfig, DEFAULT_ANALYTICS_CONFIG } from '@/lib/flippingEngine';
-import { IncrementalStats } from '@/lib/analytics';
+import { ItemAggregate, IncrementalStats } from '@/lib/analytics';
 export interface EnrichedItem extends ItemMapping {
     high: number;
     low: number;
@@ -21,7 +21,7 @@ interface MarketState {
     prices: Record<string, RawPrice>;
     volumes24h: Record<string, Volume24h>;
     history: Record<string, RawPrice>[];
-    incrementalStats: Map<number, IncrementalStats>;
+    perItemAggs: Record<number, ItemAggregate>;
     favorites: number[];
     isLoading: boolean;
     lastUpdated: number;
@@ -36,12 +36,13 @@ interface MarketState {
     setViewPreference: (pref: 'table' | 'grid') => void;
     updateScannerConfig: (config: Partial<ScannerConfig>) => void;
 }
+const PERSISTENCE_KEY = 'flipBuddyData_v1';
 export const useMarketStore = create<MarketState>((set, get) => ({
     items: [],
     prices: {},
     volumes24h: {},
     history: [],
-    incrementalStats: new Map(),
+    perItemAggs: {},
     favorites: JSON.parse(localStorage.getItem('rune_terminal_favorites') || '[]'),
     isLoading: false,
     lastUpdated: 0,
@@ -53,7 +54,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
         maxVolatility: 10,
         topN: 50
     },
-    setSearchQuery: (query) => set({ searchQuery: query }),
+    setSearchQuery: (searchQuery) => set({ searchQuery }),
     setViewPreference: (viewPreference) => set({ viewPreference }),
     updateScannerConfig: (config) => set((state) => ({
         scannerConfig: { ...state.scannerConfig, ...config },
@@ -66,18 +67,39 @@ export const useMarketStore = create<MarketState>((set, get) => ({
         set({ favorites: next });
     },
     addSnapshot: (newPrices) => {
-        const { incrementalStats } = get();
-        Object.entries(newPrices).forEach(([idStr, price]) => {
+        const start = performance.now();
+        const { perItemAggs, history } = get();
+        const newHistory = [newPrices, ...history];
+        // Update Aggregates for incoming snapshot
+        Object.entries(newPrices).forEach(([idStr, p]) => {
             const id = parseInt(idStr);
-            if (!incrementalStats.has(id)) incrementalStats.set(id, new IncrementalStats());
-            if (price.high && price.low) {
-                incrementalStats.get(id)!.update((price.high + price.low) / 2);
+            if (!perItemAggs[id]) perItemAggs[id] = new ItemAggregate();
+            if (p.high && p.low) {
+                perItemAggs[id].add((p.high + p.low) / 2);
             }
         });
-        set((state) => ({ 
-            history: [newPrices, ...state.history].slice(0, 120),
-            incrementalStats 
+        // Eviction Logic for Sliding Window (120 snaps)
+        if (newHistory.length > 120) {
+            const evicted = newHistory.pop();
+            if (evicted) {
+                Object.entries(evicted).forEach(([idStr, p]) => {
+                    const id = parseInt(idStr);
+                    if (perItemAggs[id] && p.high && p.low) {
+                        perItemAggs[id].removeSample((p.high + p.low) / 2);
+                    }
+                });
+            }
+        }
+        const end = performance.now();
+        console.log(`[SNAP_RCVD] PROC_ITEMS=${Object.keys(newPrices).length} AVG_MS=${(end-start).toFixed(2)}`);
+        // Persistence Sync
+        localStorage.setItem(PERSISTENCE_KEY, JSON.stringify({
+            history: newHistory,
+            perItemAggs: Object.fromEntries(
+                Object.entries(perItemAggs).map(([k, v]) => [k, v.toJSON()])
+            )
         }));
+        set({ history: newHistory, perItemAggs });
     },
     loadData: async () => {
         set({ isLoading: true });
@@ -87,18 +109,36 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                 fetchLatestPrices(),
                 fetch24hPrices()
             ]);
-            const stats = new Map<number, IncrementalStats>();
-            Object.entries(latest).forEach(([id, p]) => {
-                const s = new IncrementalStats();
-                if (p.high && p.low) s.update((p.high + p.low) / 2);
-                stats.set(parseInt(id), s);
-            });
+            // Hydrate from LocalStorage
+            let history: Record<string, RawPrice>[] = [latest];
+            let perItemAggs: Record<number, ItemAggregate> = {};
+            const saved = localStorage.getItem(PERSISTENCE_KEY);
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    history = parsed.history || [latest];
+                    Object.entries(parsed.perItemAggs || {}).forEach(([id, data]) => {
+                        perItemAggs[parseInt(id)] = new ItemAggregate(data as any);
+                    });
+                } catch (e) {
+                    console.warn("Failed to hydrate market state", e);
+                }
+            }
+            // If empty aggs, seed from current latest
+            if (Object.keys(perItemAggs).length === 0) {
+                Object.entries(latest).forEach(([idStr, p]) => {
+                    const id = parseInt(idStr);
+                    const agg = new ItemAggregate();
+                    if (p.high && p.low) agg.add((p.high + p.low) / 2);
+                    perItemAggs[id] = agg;
+                });
+            }
             set({
                 items: mapping,
                 prices: latest,
                 volumes24h: v24,
-                history: [latest],
-                incrementalStats: stats,
+                history,
+                perItemAggs,
                 isLoading: false,
                 lastUpdated: Date.now()
             });
@@ -123,12 +163,14 @@ export function enrichItem(
     favorites: number[],
     history: Record<string, RawPrice>[] = [],
     config: AnalyticsConfig = DEFAULT_ANALYTICS_CONFIG,
-    volumes24h: Record<string, Volume24h> = {}
+    volumes24h: Record<string, Volume24h> = {},
+    aggs: Record<number, ItemAggregate> = {}
 ): EnrichedItem {
     const p = prices[item.id] || { high: 0, low: 0, highTime: 0, lowTime: 0 };
     const v24 = volumes24h[item.id];
     const metrics = calculateFlippingMetrics(item, p, v24);
-    const advanced = calculateAdvancedMetrics(item, p, history, config, v24);
+    const agg = aggs[item.id];
+    const advanced = calculateAdvancedMetrics(item, p, history, config, v24, agg);
     return {
         ...item,
         high: metrics.sellPrice,

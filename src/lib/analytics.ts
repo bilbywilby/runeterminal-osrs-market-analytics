@@ -15,6 +15,58 @@ export class RollingStats {
   get variance(): number { return this.n > 1 ? this.m2 / (this.n - 1) : 0; }
   get stdDev(): number { return Math.sqrt(this.variance); }
 }
+export class ItemAggregate {
+  public count: number = 0;
+  public sumMid: number = 0;
+  public sumSq: number = 0;
+  public lastMid: number = 0;
+  constructor(data?: Partial<ItemAggregate>) {
+    if (data) {
+      this.count = data.count ?? 0;
+      this.sumMid = data.sumMid ?? 0;
+      this.sumSq = data.sumSq ?? 0;
+      this.lastMid = data.lastMid ?? 0;
+    }
+  }
+  add(val: number): void {
+    if (isNaN(val) || val <= 0) return;
+    this.count++;
+    this.sumMid += val;
+    this.sumSq += val * val;
+    this.lastMid = val;
+  }
+  removeSample(val: number): void {
+    if (this.count <= 0 || isNaN(val)) return;
+    this.count--;
+    this.sumMid -= val;
+    this.sumSq -= val * val;
+    // Safety check for floating point precision drift
+    if (this.count === 0) {
+      this.sumMid = 0;
+      this.sumSq = 0;
+    }
+  }
+  get mean(): number {
+    return this.count > 0 ? this.sumMid / this.count : 0;
+  }
+  get stdDev(): number {
+    if (this.count < 2) return 0;
+    const variance = (this.sumSq - (this.sumMid * this.sumMid) / this.count) / (this.count - 1);
+    return Math.sqrt(Math.max(0, variance));
+  }
+  get volatility(): number {
+    const m = this.mean;
+    return m > 0 ? (this.stdDev / m) * 100 : 0;
+  }
+  toJSON() {
+    return {
+      count: this.count,
+      sumMid: this.sumMid,
+      sumSq: this.sumSq,
+      lastMid: this.lastMid
+    };
+  }
+}
 export class IncrementalStats {
     private count: number = 0;
     private sum: number = 0;
@@ -41,9 +93,9 @@ export function tanhNormalize(value: number, alpha: number = 1): number {
   return Math.tanh(alpha * value);
 }
 export function calculateRankScore(
-    margin: number, 
-    volume: number, 
-    risk: number, 
+    margin: number,
+    volume: number,
+    risk: number,
     limit: number,
     weights = { margin: 1.0, volume: 0.8, risk: 2.0 }
 ): number {
