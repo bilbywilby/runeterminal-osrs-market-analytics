@@ -74,7 +74,6 @@ export const useMarketStore = create<MarketState>((set, get) => ({
         set((state) => {
             const newHistory = [newPrices, ...state.history];
             const nextAggs = { ...state.perItemAggs };
-            // Update aggregates for new prices
             Object.entries(newPrices).forEach(([idStr, p]) => {
                 const id = parseInt(idStr);
                 if (!nextAggs[id]) nextAggs[id] = new ItemAggregate();
@@ -82,7 +81,6 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                     nextAggs[id].add((p.high + p.low) / 2);
                 }
             });
-            // Evict oldest snapshot if limit reached
             if (newHistory.length > MAX_SNAPSHOTS) {
                 const evicted = newHistory.pop();
                 if (evicted) {
@@ -94,7 +92,6 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                     });
                 }
             }
-            // Deferred Persistence to avoid UI jank
             setTimeout(() => {
                 try {
                     const storageData = {
@@ -126,13 +123,10 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                 try {
                     const parsed = JSON.parse(saved);
                     history = parsed.history || [latest];
-                    // Hydrate aggregates
                     Object.entries(parsed.perItemAggs || {}).forEach(([id, data]) => {
                         perItemAggs[parseInt(id)] = new ItemAggregate(data as any);
                     });
-                    // Verification: If Aggregates are missing but history exists, rebuild
                     if (Object.keys(perItemAggs).length === 0 && history.length > 0) {
-                        console.warn("[HYDRATION] REBUILDING_AGGS_FROM_HISTORY");
                         history.forEach(snap => {
                             Object.entries(snap).forEach(([idStr, p]) => {
                                 const id = parseInt(idStr);
@@ -142,7 +136,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                         });
                     }
                 } catch (e) {
-                    console.warn("[HYDRATION_ERROR] Resetting to clean state", e);
+                    console.warn("[HYDRATION_ERROR]", e);
                 }
             }
             if (Object.keys(perItemAggs).length === 0) {
@@ -163,7 +157,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                 lastUpdated: Date.now()
             });
         } catch (error) {
-            console.error("Critical store load failure", error);
+            console.error("Critical store load failure:", error instanceof Error ? error.message : error);
             set({ isLoading: false });
         }
     },
@@ -173,7 +167,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             get().addSnapshot(latest);
             set({ prices: latest, volumes24h: v24, lastUpdated: Date.now() });
         } catch (error) {
-            console.error("Price refresh cycle failure", error);
+            console.error("Price refresh cycle failure:", error instanceof Error ? error.message : error);
         }
     }
 }));

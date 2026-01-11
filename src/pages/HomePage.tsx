@@ -7,7 +7,7 @@ import { Search, RotateCcw, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Toaster, toast } from 'sonner';
-export default function HomePage() {
+export function HomePage() {
     const loadData = useMarketStore(s => s.loadData);
     const refreshPrices = useMarketStore(s => s.refreshPrices);
     const searchQuery = useMarketStore(s => s.searchQuery);
@@ -79,7 +79,6 @@ export default function HomePage() {
                                 BUFFER_STATE: {historyLength} / 120 SNAPSHOTS
                             </div>
                         </div>
-                        {/* Line view for high-density startup; Card view for focused searching */}
                         <ItemGrid
                             variant={(!searchQuery && !isLoading) ? 'line' : 'card'}
                             limit={(!searchQuery && !isLoading) ? 15 : 60}
@@ -88,12 +87,12 @@ export default function HomePage() {
                 </div>
             </div>
             <Toaster theme="dark" position="bottom-right" toastOptions={{
-                style: { 
-                    background: '#050505', 
-                    border: '1px solid #39ff14', 
-                    color: '#39ff14', 
+                style: {
+                    background: '#050505',
+                    border: '1px solid #39ff14',
+                    color: '#39ff14',
                     borderRadius: '0px',
-                    fontFamily: 'monospace' 
+                    fontFamily: 'monospace'
                 }
             }} />
         </RetroLayout>

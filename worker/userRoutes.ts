@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { Env } from './core-utils';
 export function userRoutes(app: Hono<{ Bindings: Env }>) {
     const WIKI_USER_AGENT = 'RuneTerminal/1.1 (Market Analytics; contact@runeterminal.example.com)';
-    const rateLimitMap = new Map<string, number>();
     async function fetchWithRetry(url: string, options: RequestInit, retries = 3, backoff = 500): Promise<Response> {
         try {
             const response = await fetch(url, options);
@@ -21,16 +20,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
             throw error;
         }
     }
-    const checkRateLimit = (ip: string) => {
-        const now = Date.now();
-        const lastRequest = rateLimitMap.get(ip) || 0;
-        if (lastRequest !== 0 && now - lastRequest < 500) return false;
-        rateLimitMap.set(ip, now);
-        return true;
-    };
     app.get('/api/proxy/latest', async (c) => {
-        const ip = c.req.header('cf-connecting-ip') || 'anonymous';
-        if (!checkRateLimit(ip)) return c.json({ error: 'Rate limit exceeded' }, 429);
         try {
             const response = await fetchWithRetry('https://prices.runescape.wiki/api/v1/osrs/latest', {
                 headers: { 'User-Agent': WIKI_USER_AGENT }
