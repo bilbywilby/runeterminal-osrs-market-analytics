@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { fetchLatestPrices, fetchItemMapping, ItemMapping, RawPrice } from '@/lib/api';
+import { fetchLatestPrices, fetchItemMapping, fetch24hPrices, ItemMapping, RawPrice, Volume24h } from '@/lib/api';
 import { calculateFlippingMetrics, FlippingMetrics, calculateAdvancedMetrics, AdvancedMetrics, AnalyticsConfig, DEFAULT_ANALYTICS_CONFIG } from '@/lib/flippingEngine';
+import { IncrementalStats } from '@/lib/analytics';
 export interface EnrichedItem extends ItemMapping {
     high: number;
     low: number;
@@ -8,14 +9,8 @@ export interface EnrichedItem extends ItemMapping {
     roi: number;
     isFavorite: boolean;
     metrics: FlippingMetrics;
-    advanced?: AdvancedMetrics;
+    advanced: AdvancedMetrics;
 }
-export const UI_THRESHOLDS = {
-    highMargin: 10000,
-    highRoi: 3,
-    volatilityLow: 2,
-    volatilityHigh: 5
-};
 interface ScannerConfig extends AnalyticsConfig {
     minMarginVolume: number;
     maxVolatility: number;
@@ -24,39 +19,30 @@ interface ScannerConfig extends AnalyticsConfig {
 interface MarketState {
     items: ItemMapping[];
     prices: Record<string, RawPrice>;
+    volumes24h: Record<string, Volume24h>;
     history: Record<string, RawPrice>[];
+    incrementalStats: Map<number, IncrementalStats>;
     favorites: number[];
     isLoading: boolean;
     lastUpdated: number;
     searchQuery: string;
     viewPreference: 'table' | 'grid';
     scannerConfig: ScannerConfig;
-    onPricesUpdateListeners: Set<() => void>;
     loadData: () => Promise<void>;
     refreshPrices: () => Promise<void>;
     addSnapshot: (newPrices: Record<string, RawPrice>) => void;
-    subscribeToPrices: (callback: () => void) => () => void;
     setSearchQuery: (query: string) => void;
-    resetSearch: () => void;
     toggleFavorite: (id: number) => void;
     setViewPreference: (pref: 'table' | 'grid') => void;
     updateScannerConfig: (config: Partial<ScannerConfig>) => void;
 }
-const STORAGE_KEY_FAVORITES = 'rune_terminal_favorites';
-const STORAGE_KEY_HISTORY = 'rune_terminal_history_buffer';
-const MAX_HISTORY_LENGTH = 120;
-const PERSIST_HISTORY_LIMIT = 20;
 export const useMarketStore = create<MarketState>((set, get) => ({
     items: [],
     prices: {},
+    volumes24h: {},
     history: [],
-    favorites: (() => {
-        try {
-            return JSON.parse(localStorage.getItem(STORAGE_KEY_FAVORITES) || '[]');
-        } catch {
-            return [];
-        }
-    })(),
+    incrementalStats: new Map(),
+    favorites: JSON.parse(localStorage.getItem('rune_terminal_favorites') || '[]'),
     isLoading: false,
     lastUpdated: 0,
     searchQuery: '',
@@ -67,82 +53,65 @@ export const useMarketStore = create<MarketState>((set, get) => ({
         maxVolatility: 10,
         topN: 50
     },
-    onPricesUpdateListeners: new Set(),
     setSearchQuery: (query) => set({ searchQuery: query }),
-    resetSearch: () => set({ searchQuery: '' }),
     setViewPreference: (viewPreference) => set({ viewPreference }),
     updateScannerConfig: (config) => set((state) => ({
         scannerConfig: { ...state.scannerConfig, ...config },
-        lastUpdated: Date.now() // Trigger re-computation timestamp
+        lastUpdated: Date.now()
     })),
     toggleFavorite: (id) => {
-        const currentFavorites = get().favorites;
-        const newFavorites = currentFavorites.includes(id)
-            ? currentFavorites.filter(fid => fid !== id)
-            : [...currentFavorites, id];
-        localStorage.setItem(STORAGE_KEY_FAVORITES, JSON.stringify(newFavorites));
-        set({ favorites: newFavorites });
+        const favs = get().favorites;
+        const next = favs.includes(id) ? favs.filter(f => f !== id) : [...favs, id];
+        localStorage.setItem('rune_terminal_favorites', JSON.stringify(next));
+        set({ favorites: next });
     },
     addSnapshot: (newPrices) => {
-        set((state) => {
-            const updatedHistory = [newPrices, ...state.history].slice(0, MAX_HISTORY_LENGTH);
-            try {
-                localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(updatedHistory.slice(0, PERSIST_HISTORY_LIMIT)));
-            } catch (e) {
-                console.warn('[STORAGE_QUOTA]: Failed to persist history snapshot', e);
+        const { incrementalStats } = get();
+        Object.entries(newPrices).forEach(([idStr, price]) => {
+            const id = parseInt(idStr);
+            if (!incrementalStats.has(id)) incrementalStats.set(id, new IncrementalStats());
+            if (price.high && price.low) {
+                incrementalStats.get(id)!.update((price.high + price.low) / 2);
             }
-            return { history: updatedHistory };
         });
-    },
-    subscribeToPrices: (callback) => {
-        const listeners = get().onPricesUpdateListeners;
-        listeners.add(callback);
-        return () => listeners.delete(callback);
+        set((state) => ({ 
+            history: [newPrices, ...state.history].slice(0, 120),
+            incrementalStats 
+        }));
     },
     loadData: async () => {
         set({ isLoading: true });
         try {
-            let savedHistory: Record<string, RawPrice>[] = [];
-            try {
-                const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
-                if (raw) {
-                    const parsed = JSON.parse(raw);
-                    if (Array.isArray(parsed)) {
-                        savedHistory = parsed;
-                    }
-                }
-            } catch (e) {
-                console.error('[STORAGE_CORRUPTION]: Resetting history buffer', e);
-                localStorage.removeItem(STORAGE_KEY_HISTORY);
-            }
-            const [mapping, latestPrices] = await Promise.all([
+            const [mapping, latest, v24] = await Promise.all([
                 fetchItemMapping(),
-                fetchLatestPrices()
+                fetchLatestPrices(),
+                fetch24hPrices()
             ]);
+            const stats = new Map<number, IncrementalStats>();
+            Object.entries(latest).forEach(([id, p]) => {
+                const s = new IncrementalStats();
+                if (p.high && p.low) s.update((p.high + p.low) / 2);
+                stats.set(parseInt(id), s);
+            });
             set({
                 items: mapping,
-                prices: latestPrices,
-                history: savedHistory.length > 0 ? savedHistory : [latestPrices],
+                prices: latest,
+                volumes24h: v24,
+                history: [latest],
+                incrementalStats: stats,
                 isLoading: false,
                 lastUpdated: Date.now()
             });
         } catch (error) {
-            console.error('Failed to load initial market data', error);
             set({ isLoading: false });
         }
     },
     refreshPrices: async () => {
         try {
-            const latestPrices = await fetchLatestPrices();
-            const { addSnapshot, onPricesUpdateListeners } = get();
-            addSnapshot(latestPrices);
-            set({ prices: latestPrices, lastUpdated: Date.now() });
-            onPricesUpdateListeners.forEach(cb => cb());
-        } catch (error) {
-            console.error('Failed to refresh prices', error);
-            // Even if refresh fails, we notify listeners to maintain heartbeat
-            get().onPricesUpdateListeners.forEach(cb => cb());
-        }
+            const [latest, v24] = await Promise.all([fetchLatestPrices(), fetch24hPrices()]);
+            get().addSnapshot(latest);
+            set({ prices: latest, volumes24h: v24, lastUpdated: Date.now() });
+        } catch {}
     }
 }));
 export function enrichItem(
@@ -150,17 +119,19 @@ export function enrichItem(
     prices: Record<string, RawPrice>,
     favorites: number[],
     history: Record<string, RawPrice>[] = [],
-    config: AnalyticsConfig = DEFAULT_ANALYTICS_CONFIG
+    config: AnalyticsConfig = DEFAULT_ANALYTICS_CONFIG,
+    volumes24h: Record<string, Volume24h> = {}
 ): EnrichedItem {
     const p = prices[item.id] || { high: 0, low: 0, highTime: 0, lowTime: 0 };
-    const metrics = calculateFlippingMetrics(item, p);
-    const advanced = calculateAdvancedMetrics(item, p, history, config);
+    const v24 = volumes24h[item.id];
+    const metrics = calculateFlippingMetrics(item, p, v24);
+    const advanced = calculateAdvancedMetrics(item, p, history, config, v24);
     return {
         ...item,
-        high: metrics.sellPrice || 0,
-        low: metrics.buyPrice || 0,
-        margin: metrics.margin || 0,
-        roi: metrics.roi || 0,
+        high: metrics.sellPrice,
+        low: metrics.buyPrice,
+        margin: metrics.margin,
+        roi: metrics.roi,
         isFavorite: favorites.includes(item.id),
         metrics,
         advanced

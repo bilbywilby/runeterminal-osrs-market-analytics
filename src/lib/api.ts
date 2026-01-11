@@ -4,6 +4,10 @@ export interface RawPrice {
     low: number;
     lowTime: number;
 }
+export interface Volume24h {
+    highPriceVolume: number;
+    lowPriceVolume: number;
+}
 export interface ItemMapping {
     id: number;
     name: string;
@@ -30,47 +34,29 @@ function validateApiResponse<T>(data: any, validator: (d: any) => boolean, error
     return data as T;
 }
 export async function fetchLatestPrices(): Promise<Record<string, RawPrice>> {
-    try {
-        const response = await fetch('/api/proxy/latest');
-        if (!response.ok) throw new Error(`HTTP_${response.status}_LATEST`);
-        const json = await response.json();
-        return validateApiResponse<Record<string, RawPrice>>(
-            json.data,
-            (d) => typeof d === 'object' && d !== null,
-            'INVALID_LATEST_PRICES_STRUCTURE'
-        );
-    } catch (err) {
-        console.error('[UPLINK_FAILURE]: fetchLatestPrices', err);
-        throw err;
-    }
+    const response = await fetch('/api/proxy/latest');
+    if (!response.ok) throw new Error(`HTTP_${response.status}_LATEST`);
+    const json = await response.json();
+    return validateApiResponse<Record<string, RawPrice>>(json.data, (d) => typeof d === 'object', 'INVALID_LATEST');
+}
+export async function fetch24hPrices(): Promise<Record<string, Volume24h>> {
+    const response = await fetch('/api/proxy/24h');
+    if (!response.ok) throw new Error(`HTTP_${response.status}_24H`);
+    const json = await response.json();
+    return validateApiResponse<Record<string, Volume24h>>(json.data, (d) => typeof d === 'object', 'INVALID_24H');
 }
 export async function fetchItemMapping(): Promise<ItemMapping[]> {
-    try {
-        const response = await fetch('/api/proxy/mapping');
-        if (!response.ok) throw new Error(`HTTP_${response.status}_MAPPING`);
-        const data = await response.json();
-        return validateApiResponse<ItemMapping[]>(
-            data,
-            (d) => Array.isArray(d),
-            'INVALID_MAPPING_ARRAY'
-        );
-    } catch (err) {
-        console.error('[UPLINK_FAILURE]: fetchItemMapping', err);
-        throw err;
-    }
+    const response = await fetch('/api/proxy/mapping');
+    if (!response.ok) throw new Error(`HTTP_${response.status}_MAPPING`);
+    const data = await response.json();
+    return validateApiResponse<ItemMapping[]>(data, (d) => Array.isArray(d), 'INVALID_MAPPING');
 }
 export async function fetchItemTimeseries(id: number, timestep: string = '5m'): Promise<TimeseriesPoint[]> {
-    try {
-        const response = await fetch(`/api/proxy/timeseries?id=${id}&timestep=${timestep}`);
-        if (!response.ok) throw new Error(`HTTP_${response.status}_TIMESERIES`);
-        const json = await response.json();
-        if (!json.data || !Array.isArray(json.data)) {
-            console.warn(`[API_WARNING]: Empty or malformed timeseries for item ${id}`);
-            return [];
-        }
-        return json.data;
-    } catch (err) {
-        console.error(`[UPLINK_FAILURE]: fetchItemTimeseries id=${id}`, err);
-        return [];
-    }
+    const response = await fetch(`/api/proxy/timeseries?id=${id}&timestep=${timestep}`);
+    if (!response.ok) return [];
+    const json = await response.json();
+    return json.data || [];
+}
+export function downloadMarketCsv() {
+    window.location.href = '/api/export-csv';
 }
