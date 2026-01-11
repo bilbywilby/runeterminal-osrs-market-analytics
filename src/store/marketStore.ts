@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { fetchLatestPrices, fetchItemMapping, fetch24hPrices, ItemMapping, RawPrice, Volume24h } from '@/lib/api';
 import { calculateFlippingMetrics, FlippingMetrics, calculateAdvancedMetrics, AdvancedMetrics, AnalyticsConfig, DEFAULT_ANALYTICS_CONFIG } from '@/lib/flippingEngine';
-import { ItemAggregate, IncrementalStats } from '@/lib/analytics';
+import { ItemAggregate } from '@/lib/analytics';
 export interface EnrichedItem extends ItemMapping {
     high: number;
     low: number;
@@ -61,45 +61,47 @@ export const useMarketStore = create<MarketState>((set, get) => ({
         lastUpdated: Date.now()
     })),
     toggleFavorite: (id) => {
-        const favs = get().favorites;
-        const next = favs.includes(id) ? favs.filter(f => f !== id) : [...favs, id];
-        localStorage.setItem('rune_terminal_favorites', JSON.stringify(next));
-        set({ favorites: next });
+        set((state) => {
+            const next = state.favorites.includes(id) 
+                ? state.favorites.filter(f => f !== id) 
+                : [...state.favorites, id];
+            localStorage.setItem('rune_terminal_favorites', JSON.stringify(next));
+            return { favorites: next };
+        });
     },
     addSnapshot: (newPrices) => {
-        const start = performance.now();
-        const { perItemAggs, history } = get();
-        const newHistory = [newPrices, ...history];
-        // Update Aggregates for incoming snapshot
-        Object.entries(newPrices).forEach(([idStr, p]) => {
-            const id = parseInt(idStr);
-            if (!perItemAggs[id]) perItemAggs[id] = new ItemAggregate();
-            if (p.high && p.low) {
-                perItemAggs[id].add((p.high + p.low) / 2);
+        set((state) => {
+            const start = performance.now();
+            const newHistory = [newPrices, ...state.history];
+            const nextAggs = { ...state.perItemAggs };
+            Object.entries(newPrices).forEach(([idStr, p]) => {
+                const id = parseInt(idStr);
+                if (!nextAggs[id]) nextAggs[id] = new ItemAggregate();
+                if (p.high && p.low) {
+                    nextAggs[id].add((p.high + p.low) / 2);
+                }
+            });
+            if (newHistory.length > 120) {
+                const evicted = newHistory.pop();
+                if (evicted) {
+                    Object.entries(evicted).forEach(([idStr, p]) => {
+                        const id = parseInt(idStr);
+                        if (nextAggs[id] && p.high && p.low) {
+                            nextAggs[id].removeSample((p.high + p.low) / 2);
+                        }
+                    });
+                }
             }
+            const end = performance.now();
+            console.log(`[SNAP_RCVD] PROC_ITEMS=${Object.keys(newPrices).length} AVG_MS=${(end-start).toFixed(2)}`);
+            localStorage.setItem(PERSISTENCE_KEY, JSON.stringify({
+                history: newHistory,
+                perItemAggs: Object.fromEntries(
+                    Object.entries(nextAggs).map(([k, v]) => [k, v.toJSON()])
+                )
+            }));
+            return { history: newHistory, perItemAggs: nextAggs };
         });
-        // Eviction Logic for Sliding Window (120 snaps)
-        if (newHistory.length > 120) {
-            const evicted = newHistory.pop();
-            if (evicted) {
-                Object.entries(evicted).forEach(([idStr, p]) => {
-                    const id = parseInt(idStr);
-                    if (perItemAggs[id] && p.high && p.low) {
-                        perItemAggs[id].removeSample((p.high + p.low) / 2);
-                    }
-                });
-            }
-        }
-        const end = performance.now();
-        console.log(`[SNAP_RCVD] PROC_ITEMS=${Object.keys(newPrices).length} AVG_MS=${(end-start).toFixed(2)}`);
-        // Persistence Sync
-        localStorage.setItem(PERSISTENCE_KEY, JSON.stringify({
-            history: newHistory,
-            perItemAggs: Object.fromEntries(
-                Object.entries(perItemAggs).map(([k, v]) => [k, v.toJSON()])
-            )
-        }));
-        set({ history: newHistory, perItemAggs });
     },
     loadData: async () => {
         set({ isLoading: true });
@@ -109,7 +111,6 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                 fetchLatestPrices(),
                 fetch24hPrices()
             ]);
-            // Hydrate from LocalStorage
             let history: Record<string, RawPrice>[] = [latest];
             let perItemAggs: Record<number, ItemAggregate> = {};
             const saved = localStorage.getItem(PERSISTENCE_KEY);
@@ -121,10 +122,9 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                         perItemAggs[parseInt(id)] = new ItemAggregate(data as any);
                     });
                 } catch (e) {
-                    console.warn("Failed to hydrate market state", e);
+                    console.warn("Hydration error, resetting to clean state", e);
                 }
             }
-            // If empty aggs, seed from current latest
             if (Object.keys(perItemAggs).length === 0) {
                 Object.entries(latest).forEach(([idStr, p]) => {
                     const id = parseInt(idStr);
@@ -143,7 +143,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                 lastUpdated: Date.now()
             });
         } catch (error) {
-            console.error("Initial load failure", error);
+            console.error("Critical store load failure", error);
             set({ isLoading: false });
         }
     },
@@ -153,7 +153,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             get().addSnapshot(latest);
             set({ prices: latest, volumes24h: v24, lastUpdated: Date.now() });
         } catch (error) {
-            console.error("Market refresh cycle failure", error);
+            console.error("Price refresh cycle failure", error);
         }
     }
 }));

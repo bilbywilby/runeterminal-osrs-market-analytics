@@ -16,7 +16,23 @@ import { ItemDetailPage } from '@/pages/ItemDetailPage'
 import { MarketScanner } from '@/pages/MarketScanner'
 import { FlipBuddy } from '@/pages/FlipBuddy'
 import { IntelligencePage } from '@/pages/IntelligencePage'
-const queryClient = new QueryClient();
+// Suppress ResizeObserver loop limit exceeded warnings from Recharts
+if (typeof window !== 'undefined') {
+  const originalError = console.error;
+  console.error = (...args) => {
+    if (args[0]?.includes?.('ResizeObserver loop limit exceeded')) return;
+    originalError.apply(console, args);
+  };
+}
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+      staleTime: 30000, // Sync with market store interval
+    },
+  },
+});
 const router = createBrowserRouter([
   {
     path: "/",
