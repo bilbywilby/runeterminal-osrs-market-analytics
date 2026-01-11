@@ -6,7 +6,6 @@ import { Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-
 interface ItemGridProps {
     variant?: 'card' | 'line';
     limit?: number;
@@ -25,7 +24,7 @@ export function ItemGrid({ variant = 'card', limit = 100 }: ItemGridProps) {
             .map(item => enrichItem(item, prices, favorites))
             .sort((a, b) => b.margin - a.margin)
             .slice(0, limit);
-    }, [rawItems, prices, favorites, searchQuery]);
+    }, [rawItems, prices, favorites, searchQuery, limit]);
     if (isLoading) {
         return (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -54,10 +53,6 @@ export function ItemGrid({ variant = 'card', limit = 100 }: ItemGridProps) {
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.95 }}
                         transition={{ duration: 0.2 }}
-                    >
-                        layout
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
                     >
                         {variant === 'line' ? (
                             <Link to={`/item/${item.id}`} className="block focus:outline-none">
@@ -100,11 +95,11 @@ export function ItemGrid({ variant = 'card', limit = 100 }: ItemGridProps) {
                                         </div>
                                     </div>
                                     <div className="flex flex-col items-end gap-1">
-                                        <Badge 
-                                            variant="outline" 
+                                        <Badge
+                                            variant="outline"
                                             className={cn(
                                                 "rounded-none text-[9px] px-1 h-5",
-                                                item.roi > 5 ? "border-terminal-green text-terminal-green" : 
+                                                item.roi > 5 ? "border-terminal-green text-terminal-green" :
                                                 item.roi >= 1 ? "border-terminal-amber text-terminal-amber" : "border-terminal-green/30 text-terminal-green/30"
                                             )}
                                         >

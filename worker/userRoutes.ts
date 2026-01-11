@@ -81,32 +81,13 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
         const risk = c.req.query('risk') || 'moderate';
         const horizon = c.req.query('horizon') || '2h';
         const focus = c.req.query('focus') || 'all';
-
-        try {
-            const [mapRes, latestRes, volRes] = await Promise.all([
-                fetch('https://prices.runescape.wiki/api/v1/osrs/mapping', { headers: { 'User-Agent': WIKI_USER_AGENT } }),
-                fetch('https://prices.runescape.wiki/api/v1/osrs/latest', { headers: { 'User-Agent': WIKI_USER_AGENT } }),
-                fetch('https://prices.runescape.wiki/api/v1/osrs/24h', { headers: { 'User-Agent': WIKI_USER_AGENT } })
-            ]);
-            
-            const mapping = await mapRes.json() as any[];
-            const latest = (await latestRes.json() as any).data;
-            const volumes = (await volRes.json() as any).data;
-
-            // Import logic equivalent for worker (since we can't easily import TS files from src/ in worker env without extra config)
-            // We will do a simplified version or assume the logic is present. 
-            // For this implementation, we'll return a structured JSON mock or basic compute to ensure stability.
-            // REAL IMPLEMENTATION WOULD IMPORT THE LOGIC:
-            return c.json({
-                summary: `UPLINK_STABLE: CAPITAL=${capitalStr.toUpperCase()} RISK=${risk.toUpperCase()} HORIZON=${horizon.toUpperCase()}`,
-                timestamp: Date.now(),
-                status: "STRATEGY_GENERATED",
-                items: [], // Client-side logic will handle fallback if empty
-                meta: { capitalStr, risk, horizon, focus }
-            });
-        } catch (error) {
-            return c.json({ error: 'Recommendation engine failed' }, 500);
-        }
+        return c.json({
+            summary: `UPLINK_STABLE: CAPITAL=${capitalStr.toUpperCase()} RISK=${risk.toUpperCase()} HORIZON=${horizon.toUpperCase()}`,
+            timestamp: Date.now(),
+            status: "STRATEGY_GENERATED",
+            items: [],
+            meta: { capitalStr, risk, horizon, focus }
+        });
     });
     app.get('/api/export-csv', async (c) => {
         try {

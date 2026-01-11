@@ -19,7 +19,6 @@ export function FlipBuddy() {
   const [result, setResult] = useState<FlipBuddyResponse | null>(null);
   const handleGenerate = async () => {
     setIsProcessing(true);
-    // Simulate thinking delay for retro effect
     await new Promise(r => setTimeout(r, 1500));
     try {
       const capNum = parseCapital(capital);
@@ -28,8 +27,12 @@ export function FlipBuddy() {
         return;
       }
       const recs = computeRecs(capNum, risk, horizon, focus, items, prices, volumes);
-      setResult(recs);
-      toast.success("STRATEGY_COMPUTED");
+      if (!recs || !recs.items.length) {
+        toast.error("ZERO_VECTORS_FOUND_FOR_CAPITAL");
+      } else {
+        setResult(recs);
+        toast.success("STRATEGY_COMPUTED");
+      }
     } catch (err) {
       toast.error("ENGINE_FAULT_DETECTED");
     } finally {
@@ -59,9 +62,9 @@ export function FlipBuddy() {
             <div className="space-y-4">
               <div className="space-y-1">
                 <label className="text-[10px] uppercase text-terminal-green/50">Working_Capital (e.g. 50M, 100K)</label>
-                <Input 
-                  value={capital} 
-                  onChange={e => setCapital(e.target.value)} 
+                <Input
+                  value={capital}
+                  onChange={e => setCapital(e.target.value)}
                   className="bg-terminal-black border-terminal-green/30 rounded-none h-10 font-mono text-terminal-green"
                 />
               </div>
@@ -106,8 +109,8 @@ export function FlipBuddy() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button 
-                onClick={handleGenerate} 
+              <Button
+                onClick={handleGenerate}
                 disabled={isProcessing}
                 className="w-full bg-terminal-green text-terminal-black hover:bg-terminal-amber font-black rounded-none h-12 transition-colors uppercase"
               >
@@ -130,19 +133,19 @@ export function FlipBuddy() {
                   {`{ "summary": "${result.summary}", `}
                 </p>
                 <div className="pl-4 space-y-2">
-                  <p className="text-terminal-green">"top_vectors": [</p>
+                  <p className="text-terminal-green">{`"top_vectors": [`}</p>
                   {result.items.map((item, idx) => (
                     <div key={item.id} className="pl-4">
                       <span className="text-terminal-green/70">{`{ "id": ${item.id}, "asset": "${item.name}", "profit_est": "+${item.profitPerItem}gp", "note": "${item.shortNote}" }`}{idx < result.items.length - 1 ? ',' : ''}</span>
                     </div>
                   ))}
-                  <p className="text-terminal-green">],</p>
-                  <p className="text-terminal-amber">"wildcard": {`{ "asset": "${result.wildcard.name}", "risk": "CRITICAL" }`}</p>
+                  <p className="text-terminal-green">{`],`}</p>
+                  <p className="text-terminal-amber">{`"wildcard": { "asset": "${result.wildcard.name}", "risk": "CRITICAL" }`}</p>
                 </div>
-                <p className="text-terminal-amber">}</p>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <p className="text-terminal-amber">{'}'}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={copySequence}
                   className="mt-4 border-terminal-green/30 text-terminal-green rounded-none h-8 text-[10px] w-full"
                 >
