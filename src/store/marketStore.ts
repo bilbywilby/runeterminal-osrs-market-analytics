@@ -72,7 +72,8 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     resetSearch: () => set({ searchQuery: '' }),
     setViewPreference: (viewPreference) => set({ viewPreference }),
     updateScannerConfig: (config) => set((state) => ({
-        scannerConfig: { ...state.scannerConfig, ...config }
+        scannerConfig: { ...state.scannerConfig, ...config },
+        lastUpdated: Date.now() // Trigger re-computation timestamp
     })),
     toggleFavorite: (id) => {
         const currentFavorites = get().favorites;
@@ -101,11 +102,18 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     loadData: async () => {
         set({ isLoading: true });
         try {
-            let savedHistory = [];
+            let savedHistory: Record<string, RawPrice>[] = [];
             try {
-                savedHistory = JSON.parse(localStorage.getItem(STORAGE_KEY_HISTORY) || '[]');
-            } catch {
-                savedHistory = [];
+                const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) {
+                        savedHistory = parsed;
+                    }
+                }
+            } catch (e) {
+                console.error('[STORAGE_CORRUPTION]: Resetting history buffer', e);
+                localStorage.removeItem(STORAGE_KEY_HISTORY);
             }
             const [mapping, latestPrices] = await Promise.all([
                 fetchItemMapping(),
@@ -114,7 +122,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             set({
                 items: mapping,
                 prices: latestPrices,
-                history: Array.isArray(savedHistory) && savedHistory.length > 0 ? savedHistory : [latestPrices],
+                history: savedHistory.length > 0 ? savedHistory : [latestPrices],
                 isLoading: false,
                 lastUpdated: Date.now()
             });
@@ -132,6 +140,8 @@ export const useMarketStore = create<MarketState>((set, get) => ({
             onPricesUpdateListeners.forEach(cb => cb());
         } catch (error) {
             console.error('Failed to refresh prices', error);
+            // Even if refresh fails, we notify listeners to maintain heartbeat
+            get().onPricesUpdateListeners.forEach(cb => cb());
         }
     }
 }));

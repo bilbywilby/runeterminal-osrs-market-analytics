@@ -6,8 +6,7 @@ import {
     YAxis,
     CartesianGrid,
     Tooltip,
-    ResponsiveContainer,
-    TooltipProps
+    ResponsiveContainer
 } from 'recharts';
 import { TimeseriesPoint } from '@/lib/api';
 import { format } from 'date-fns';
@@ -16,16 +15,16 @@ interface ItemChartProps {
     isLoading?: boolean;
 }
 /**
- * Custom Tooltip with proper TypeScript typing for Recharts
+ * Custom Tooltip with flexible typing to bypass Recharts version conflicts
  */
-const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
-    if (active && payload && payload.length > 0 && label) {
+const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length > 0) {
         return (
             <div className="bg-terminal-black border border-terminal-green p-2 font-mono text-[10px] shadow-lg">
                 <p className="text-terminal-amber border-b border-terminal-green/20 mb-1 pb-1 uppercase">
-                    {format(new Date(Number(label) * 1000), 'MMM dd, HH:mm')}
+                    {label ? format(new Date(Number(label) * 1000), 'MMM dd, HH:mm') : 'N/A'}
                 </p>
-                {payload.map((entry, index) => (
+                {payload.map((entry: any, index: number) => (
                     <p key={index} style={{ color: entry.color }} className="flex justify-between gap-4">
                         <span className="uppercase">{entry.name}:</span>
                         <span className="font-bold">{(entry.value ?? 0).toLocaleString()} GP</span>
@@ -83,6 +82,7 @@ export function ItemChart({ data, isLoading }: ItemChartProps) {
                         fillOpacity={1}
                         fill="url(#colorHigh)"
                         strokeWidth={2}
+                        isAnimationActive={false}
                     />
                     <Area
                         type="monotone"
@@ -92,6 +92,7 @@ export function ItemChart({ data, isLoading }: ItemChartProps) {
                         fillOpacity={1}
                         fill="url(#colorLow)"
                         strokeWidth={2}
+                        isAnimationActive={false}
                     />
                 </AreaChart>
             </ResponsiveContainer>

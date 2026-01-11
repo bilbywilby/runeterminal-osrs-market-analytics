@@ -1,10 +1,9 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { RetroLayout } from '@/components/layout/RetroLayout';
 import { useMarketStore, enrichItem, UI_THRESHOLDS, EnrichedItem } from '@/store/marketStore';
-import { Search, LayoutGrid, List, Zap, TrendingUp, Database, SlidersHorizontal, Info } from 'lucide-react';
+import { Search, LayoutGrid, List, Zap, Database, SlidersHorizontal, Info, TriangleAlert } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -20,14 +19,14 @@ export function MarketScanner() {
     const scannerConfig = useMarketStore(s => s.scannerConfig);
     const updateScannerConfig = useMarketStore(s => s.updateScannerConfig);
     const subscribeToPrices = useMarketStore(s => s.subscribeToPrices);
+    const lastUpdated = useMarketStore(s => s.lastUpdated);
     const [pulse, setPulse] = useState(false);
-    const [, setTick] = useState(0);
     const [showConfig, setShowConfig] = useState(false);
     useEffect(() => {
         const unsubscribe = subscribeToPrices(() => {
-            setTick(t => t + 1);
             setPulse(true);
-            setTimeout(() => setPulse(false), 800);
+            const timer = setTimeout(() => setPulse(false), 800);
+            return () => clearTimeout(timer);
         });
         return unsubscribe;
     }, [subscribeToPrices]);
@@ -36,13 +35,18 @@ export function MarketScanner() {
         return rawItems
             .filter(item => item.name.toLowerCase().includes(query))
             .map(item => enrichItem(item, prices, favorites, history, scannerConfig))
-            .filter(item =>
-                item.metrics.marginVolume >= (scannerConfig.minMarginVolume || 0) &&
-                (item.advanced?.historicalVolatility || 0) <= (scannerConfig.maxVolatility || 100)
-            )
-            .sort((a, b) => (b.advanced?.rankScore || 0) - (a.advanced?.rankScore || 0))
+            .filter(item => {
+                const vol = item.advanced?.historicalVolatility ?? 0;
+                const mv = item.metrics.marginVolume ?? 0;
+                return mv >= (scannerConfig.minMarginVolume || 0) && vol <= (scannerConfig.maxVolatility || 100);
+            })
+            .sort((a, b) => {
+                const scoreA = a.advanced?.rankScore ?? -Infinity;
+                const scoreB = b.advanced?.rankScore ?? -Infinity;
+                return scoreB - scoreA;
+            })
             .slice(0, scannerConfig.topN || 50);
-    }, [rawItems, prices, favorites, history, searchQuery, scannerConfig]);
+    }, [rawItems, prices, favorites, history, searchQuery, scannerConfig, lastUpdated]);
     const getVolatilityColor = (score: number) => {
         if (score < UI_THRESHOLDS.volatilityLow) return 'text-terminal-green';
         if (score < UI_THRESHOLDS.volatilityHigh) return 'text-terminal-amber';
@@ -80,7 +84,7 @@ export function MarketScanner() {
                             variant="outline"
                             size="sm"
                             onClick={() => setShowConfig(!showConfig)}
-                            className={cn("rounded-none h-8 border-terminal-green/30 text-terminal-green", showConfig && "bg-terminal-green text-terminal-black")}
+                            className={cn("rounded-none h-8 border-terminal-green/30 text-terminal-green transition-colors", showConfig && "bg-terminal-green text-terminal-black")}
                         >
                             <SlidersHorizontal size={14} className="mr-2" />
                             TUNING
@@ -106,9 +110,10 @@ export function MarketScanner() {
                     </div>
                 </div>
                 {showConfig && (
-                    <motion.div 
+                    <motion.div
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
                         className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 bg-terminal-green/5 border border-terminal-green/20 p-4 font-mono overflow-hidden"
                     >
                         <ConfigInput label="SENSITIVITY (GP)" value={scannerConfig.sensitivityGpPerTrade} onChange={v => updateScannerConfig({ sensitivityGpPerTrade: v })} />
@@ -135,50 +140,60 @@ export function MarketScanner() {
                     </div>
                 </div>
                 <div className="overflow-x-auto border border-terminal-green/20 bg-terminal-black">
-                    <table className="w-full text-left font-mono text-[10px] border-collapse min-w-[900px]">
-                        <thead>
-                            <tr className="bg-terminal-green/10 border-b border-terminal-green/20 uppercase tracking-tighter">
-                                <th className="p-3 text-terminal-green/50">ASSET</th>
-                                <th className="p-3 text-right">BUY/SELL</th>
-                                <th className="p-3 text-right">NET_MARGIN</th>
-                                <th className="p-3 text-right text-terminal-amber">EST_P/HR</th>
-                                <th className="p-3 text-right">VOL %</th>
-                                <th className="p-3 text-right text-terminal-green">RANK_SCORE</th>
-                                <th className="p-3 text-right">SAMPLES</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {results.map((item) => (
-                                <tr key={item.id} className="border-b border-terminal-green/5 hover:bg-terminal-green/5 transition-colors group h-12">
-                                    <td className="p-3">
-                                        <Link to={`/item/${item.id}`} className="flex items-center gap-2 text-terminal-green hover:underline font-bold uppercase truncate max-w-[180px]">
-                                            <ItemIconSmall item={item} />
-                                            {item.name}
-                                        </Link>
-                                    </td>
-                                    <td className="p-3 text-right whitespace-nowrap">
-                                        <div className="text-terminal-green/50">{item.low.toLocaleString()}</div>
-                                        <div>{item.high.toLocaleString()}</div>
-                                    </td>
-                                    <td className="p-3 text-right font-bold text-terminal-green">
-                                        +{item.margin.toLocaleString()}
-                                    </td>
-                                    <td className="p-3 text-right text-terminal-amber font-bold">
-                                        {item.advanced?.riskAdjustedProfit ? Math.floor(item.advanced.riskAdjustedProfit).toLocaleString() : '---'}
-                                    </td>
-                                    <td className={cn("p-3 text-right font-bold", getVolatilityColor(item.advanced?.historicalVolatility || 0))}>
-                                        {item.advanced?.historicalVolatility.toFixed(2)}%
-                                    </td>
-                                    <td className="p-3 text-right font-bold text-terminal-green">
-                                        {item.advanced?.rankScore.toFixed(2)}
-                                    </td>
-                                    <td className="p-3 text-right text-terminal-green/40">
-                                        {item.advanced?.sampleSize}
-                                    </td>
+                    {results.length > 0 ? (
+                        <table className="w-full text-left font-mono text-[10px] border-collapse min-w-[900px]">
+                            <thead>
+                                <tr className="bg-terminal-green/10 border-b border-terminal-green/20 uppercase tracking-tighter">
+                                    <th className="p-3 text-terminal-green/50">ASSET</th>
+                                    <th className="p-3 text-right">BUY/SELL</th>
+                                    <th className="p-3 text-right">NET_MARGIN</th>
+                                    <th className="p-3 text-right text-terminal-amber">EST_P/HR</th>
+                                    <th className="p-3 text-right">VOL %</th>
+                                    <th className="p-3 text-right text-terminal-green">RANK_SCORE</th>
+                                    <th className="p-3 text-right">SAMPLES</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {results.map((item) => (
+                                    <tr key={item.id} className="border-b border-terminal-green/5 hover:bg-terminal-green/5 transition-colors group h-12">
+                                        <td className="p-3">
+                                            <Link to={`/item/${item.id}`} className="flex items-center gap-2 text-terminal-green hover:underline font-bold uppercase truncate max-w-[180px]">
+                                                <ItemIconSmall item={item} />
+                                                {item.name}
+                                            </Link>
+                                        </td>
+                                        <td className="p-3 text-right whitespace-nowrap">
+                                            <div className="text-terminal-green/50">{(item.low || 0).toLocaleString()}</div>
+                                            <div>{(item.high || 0).toLocaleString()}</div>
+                                        </td>
+                                        <td className="p-3 text-right font-bold text-terminal-green">
+                                            +{(item.margin || 0).toLocaleString()}
+                                        </td>
+                                        <td className="p-3 text-right text-terminal-amber font-bold">
+                                            {item.advanced?.riskAdjustedProfit ? Math.floor(item.advanced.riskAdjustedProfit).toLocaleString() : '---'}
+                                        </td>
+                                        <td className={cn("p-3 text-right font-bold", getVolatilityColor(item.advanced?.historicalVolatility || 0))}>
+                                            {item.advanced?.historicalVolatility.toFixed(2)}%
+                                        </td>
+                                        <td className="p-3 text-right font-bold text-terminal-green">
+                                            {item.advanced?.rankScore.toFixed(2)}
+                                        </td>
+                                        <td className="p-3 text-right text-terminal-green/40">
+                                            {item.advanced?.sampleSize}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    ) : (
+                        <div className="p-20 flex flex-col items-center justify-center gap-4 text-terminal-green/40 font-mono uppercase">
+                            <TriangleAlert size={40} className="text-terminal-amber animate-pulse" />
+                            <div className="text-center">
+                                <p className="text-sm font-bold text-terminal-green">ZERO_MATCHES_IN_BUFFER</p>
+                                <p className="text-[10px]">Try adjusting volatility or margin-volume thresholds</p>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </RetroLayout>
@@ -192,7 +207,7 @@ function ConfigInput({ label, value, onChange }: { label: string, value: number,
                 type="number"
                 value={value}
                 onChange={(e) => onChange(Number(e.target.value))}
-                className="bg-terminal-black border-terminal-green/30 h-7 rounded-none text-terminal-green text-[10px] p-1 px-2"
+                className="bg-terminal-black border-terminal-green/30 h-7 rounded-none text-terminal-green text-[10px] p-1 px-2 focus-visible:ring-1 focus-visible:ring-terminal-green/50"
             />
         </div>
     );
@@ -200,5 +215,5 @@ function ConfigInput({ label, value, onChange }: { label: string, value: number,
 function ItemIconSmall({ item, size = "w-5 h-5" }: { item: EnrichedItem, size?: string }) {
     const [failed, setFailed] = useState(false);
     if (failed) return <div className={cn("flex items-center justify-center bg-terminal-green/10 text-terminal-green font-bold text-[10px] shrink-0", size)}>{item.name.charAt(0)}</div>;
-    return <img src={`https://static.runescape.wiki/images/${item.icon.replace(/ /g, '_')}`} className={cn("object-contain shrink-0", size)} onError={() => setFailed(true)} />;
+    return <img src={`https://static.runescape.wiki/images/${item.icon.replace(/ /g, '_')}`} className={cn("object-contain shrink-0", size)} onError={() => setFailed(true)} alt="" />;
 }
