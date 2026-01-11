@@ -63,39 +63,12 @@ export const useMarketStore = create<MarketState>((set, get) => ({
         }
     }
 }));
-// SELECTORS
-export const selectSearchQuery = (state: MarketState) => state.searchQuery;
-export const selectIsLoading = (state: MarketState) => state.isLoading;
-export const selectLastUpdated = (state: MarketState) => state.lastUpdated;
-export const selectFavorites = (state: MarketState) => state.favorites;
-export const selectEnrichedItems = (state: MarketState): EnrichedItem[] => {
-    const { items, prices, searchQuery, favorites } = state;
-    const query = searchQuery.toLowerCase();
-    // Cache calculation of filtered items to avoid infinite loops if results are used in hooks
-    return items
-        .filter(item => item.name.toLowerCase().includes(query))
-        .map(item => {
-            const p = prices[item.id] || { high: 0, low: 0 };
-            const margin = p.high > 0 && p.low > 0 ? (p.high - p.low) : 0;
-            const tax = Math.floor(p.high * 0.01);
-            const netMargin = Math.max(0, margin - tax);
-            const roi = p.low > 0 ? (netMargin / p.low) * 100 : 0;
-            return {
-                ...item,
-                high: p.high,
-                low: p.low,
-                margin: netMargin,
-                roi: roi,
-                isFavorite: favorites.includes(item.id)
-            };
-        })
-        .sort((a, b) => b.margin - a.margin)
-        .slice(0, 100);
-};
-export const selectItemById = (id: number) => (state: MarketState): EnrichedItem | null => {
-    const item = state.items.find(i => i.id === id);
-    if (!item) return null;
-    const p = state.prices[id] || { high: 0, low: 0 };
+/**
+ * Pure helper function to enrich a raw item with price data and favorite status.
+ * Used inside components with useMemo to ensure stable references.
+ */
+export function enrichItem(item: ItemMapping, prices: Record<string, RawPrice>, favorites: number[]): EnrichedItem {
+    const p = prices[item.id] || { high: 0, low: 0 };
     const margin = p.high > 0 && p.low > 0 ? (p.high - p.low) : 0;
     const tax = Math.floor(p.high * 0.01);
     const netMargin = Math.max(0, margin - tax);
@@ -106,6 +79,6 @@ export const selectItemById = (id: number) => (state: MarketState): EnrichedItem
         low: p.low,
         margin: netMargin,
         roi: roi,
-        isFavorite: state.favorites.includes(id)
+        isFavorite: favorites.includes(item.id)
     };
-};
+}

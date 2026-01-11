@@ -13,6 +13,8 @@ import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
 import '@/index.css'
 import { HomePage } from '@/pages/HomePage'
 import { ItemDetailPage } from '@/pages/ItemDetailPage'
+import { MarketScanner } from '@/pages/MarketScanner'
+import { IntelligencePage } from '@/pages/IntelligencePage'
 const queryClient = new QueryClient();
 const router = createBrowserRouter([
   {
@@ -27,12 +29,12 @@ const router = createBrowserRouter([
   },
   {
     path: "/scanner",
-    element: <div className="p-8 text-terminal-green">SCANNER_MODULE_OFFLINE: PENDING_DEPLOYMENT</div>,
+    element: <MarketScanner />,
     errorElement: <RouteErrorBoundary />,
   },
   {
     path: "/intelligence",
-    element: <div className="p-8 text-terminal-green">INTEL_MODULE_OFFLINE: PENDING_PHASE_3</div>,
+    element: <IntelligencePage />,
     errorElement: <RouteErrorBoundary />,
   }
 ]);

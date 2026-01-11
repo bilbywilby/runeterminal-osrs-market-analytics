@@ -1,13 +1,24 @@
-import React from 'react';
-import { useMarketStore, selectEnrichedItems, selectIsLoading } from '@/store/marketStore';
+import React, { useMemo } from 'react';
+import { useMarketStore, enrichItem, EnrichedItem } from '@/store/marketStore';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 export function ItemGrid() {
-    const items = useMarketStore(selectEnrichedItems);
-    const isLoading = useMarketStore(selectIsLoading);
+    const rawItems = useMarketStore(s => s.items);
+    const prices = useMarketStore(s => s.prices);
+    const favorites = useMarketStore(s => s.favorites);
+    const searchQuery = useMarketStore(s => s.searchQuery);
+    const isLoading = useMarketStore(s => s.isLoading);
     const toggleFavorite = useMarketStore(s => s.toggleFavorite);
+    const filteredItems = useMemo(() => {
+        const query = searchQuery.toLowerCase();
+        return rawItems
+            .filter(item => item.name.toLowerCase().includes(query))
+            .map(item => enrichItem(item, prices, favorites))
+            .sort((a, b) => b.margin - a.margin)
+            .slice(0, 100);
+    }, [rawItems, prices, favorites, searchQuery]);
     if (isLoading) {
         return (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -17,7 +28,7 @@ export function ItemGrid() {
             </div>
         );
     }
-    if (items.length === 0) {
+    if (filteredItems.length === 0) {
         return (
             <div className="h-64 border border-dashed border-terminal-green/20 flex flex-col items-center justify-center font-mono opacity-50">
                 <p>ZERO_RESULTS_IN_BUFFER</p>
@@ -27,11 +38,10 @@ export function ItemGrid() {
     }
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {items.map((item) => (
+            {filteredItems.map((item) => (
                 <Link key={item.id} to={`/item/${item.id}`} className="block focus:outline-none">
                     <Card className="bg-terminal-black border-terminal-green/30 hover:border-terminal-green transition-all rounded-none p-4 flex flex-col gap-3 group relative h-full">
-                        {/* Favorite Button Overlay */}
-                        <button 
+                        <button
                             onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -39,9 +49,9 @@ export function ItemGrid() {
                             }}
                             className="absolute top-2 right-2 z-10 p-1 hover:scale-110 transition-transform"
                         >
-                            <Star 
-                                size={14} 
-                                className={item.isFavorite ? 'fill-terminal-amber text-terminal-amber' : 'text-terminal-green/20 hover:text-terminal-green/50'} 
+                            <Star
+                                size={14}
+                                className={item.isFavorite ? 'fill-terminal-amber text-terminal-amber' : 'text-terminal-green/20 hover:text-terminal-green/50'}
                             />
                         </button>
                         <div className="flex justify-between items-start">
