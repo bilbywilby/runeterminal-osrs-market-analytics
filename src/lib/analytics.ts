@@ -21,6 +21,10 @@ export class ItemAggregate {
   public sumSq: number = 0;
   public lastMid: number = 0;
   constructor(data?: Partial<ItemAggregate>) {
+    this.count = 0;
+    this.sumMid = 0;
+    this.sumSq = 0;
+    this.lastMid = 0;
     if (data) {
       this.count = data.count ?? 0;
       this.sumMid = data.sumMid ?? 0;
@@ -36,27 +40,36 @@ export class ItemAggregate {
     this.lastMid = val;
   }
   removeSample(val: number): void {
-    if (this.count <= 0 || isNaN(val)) return;
+    if (this.count <= 0 || isNaN(val)) {
+      this.clear();
+      return;
+    }
     this.count--;
     this.sumMid -= val;
     this.sumSq -= val * val;
-    // Safety check for floating point precision drift
-    if (this.count === 0) {
-      this.sumMid = 0;
-      this.sumSq = 0;
+    // Safety check for floating point precision drift or underflow
+    if (this.count <= 0 || this.sumMid < 0 || this.sumSq < 0) {
+      this.clear();
     }
+  }
+  clear(): void {
+    this.count = 0;
+    this.sumMid = 0;
+    this.sumSq = 0;
+    this.lastMid = 0;
   }
   get mean(): number {
     return this.count > 0 ? this.sumMid / this.count : 0;
   }
   get stdDev(): number {
     if (this.count < 2) return 0;
+    // Variance formula: (Sum(x^2) - (Sum(x)^2 / n)) / (n - 1)
     const variance = (this.sumSq - (this.sumMid * this.sumMid) / this.count) / (this.count - 1);
     return Math.sqrt(Math.max(0, variance));
   }
   get volatility(): number {
     const m = this.mean;
-    return m > 0 ? (this.stdDev / m) * 100 : 0;
+    return m > 0.000001 ? (this.stdDev / m) * 100 : 0;
   }
   toJSON() {
     return {
@@ -66,28 +79,6 @@ export class ItemAggregate {
       lastMid: this.lastMid
     };
   }
-}
-export class IncrementalStats {
-    private count: number = 0;
-    private sum: number = 0;
-    private sumSq: number = 0;
-    update(val: number): void {
-        this.count++;
-        this.sum += val;
-        this.sumSq += val * val;
-    }
-    get mean(): number {
-        return this.count > 0 ? this.sum / this.count : 0;
-    }
-    get stdDev(): number {
-        if (this.count < 2) return 0;
-        const variance = (this.sumSq - (this.sum * this.sum) / this.count) / (this.count - 1);
-        return Math.sqrt(Math.max(0, variance));
-    }
-    get volatility(): number {
-        const m = this.mean;
-        return m > 0 ? (this.stdDev / m) * 100 : 0;
-    }
 }
 export function tanhNormalize(value: number, alpha: number = 1): number {
   return Math.tanh(alpha * value);
@@ -102,5 +93,6 @@ export function calculateRankScore(
   const logMargin = Math.log10(Math.max(1, margin));
   const logVol = Math.log10(Math.max(1, volume));
   const logLimit = Math.log10(Math.max(1, limit));
+  // Score = (Weighted Margin + Weighted Volume - Weighted Risk) scaled by item limit importance
   return (logMargin * weights.margin + logVol * weights.volume - risk * weights.risk) * logLimit;
 }

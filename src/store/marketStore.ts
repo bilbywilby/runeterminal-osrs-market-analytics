@@ -36,7 +36,8 @@ interface MarketState {
     setViewPreference: (pref: 'table' | 'grid') => void;
     updateScannerConfig: (config: Partial<ScannerConfig>) => void;
 }
-const PERSISTENCE_KEY = 'flipBuddyData_v1';
+const PERSISTENCE_KEY = 'rune_terminal_state_v1';
+const MAX_SNAPSHOTS = 120;
 export const useMarketStore = create<MarketState>((set, get) => ({
     items: [],
     prices: {},
@@ -62,8 +63,8 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     })),
     toggleFavorite: (id) => {
         set((state) => {
-            const next = state.favorites.includes(id) 
-                ? state.favorites.filter(f => f !== id) 
+            const next = state.favorites.includes(id)
+                ? state.favorites.filter(f => f !== id)
                 : [...state.favorites, id];
             localStorage.setItem('rune_terminal_favorites', JSON.stringify(next));
             return { favorites: next };
@@ -71,9 +72,9 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     },
     addSnapshot: (newPrices) => {
         set((state) => {
-            const start = performance.now();
             const newHistory = [newPrices, ...state.history];
             const nextAggs = { ...state.perItemAggs };
+            // Update aggregates for new prices
             Object.entries(newPrices).forEach(([idStr, p]) => {
                 const id = parseInt(idStr);
                 if (!nextAggs[id]) nextAggs[id] = new ItemAggregate();
@@ -81,7 +82,8 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                     nextAggs[id].add((p.high + p.low) / 2);
                 }
             });
-            if (newHistory.length > 120) {
+            // Evict oldest snapshot if limit reached
+            if (newHistory.length > MAX_SNAPSHOTS) {
                 const evicted = newHistory.pop();
                 if (evicted) {
                     Object.entries(evicted).forEach(([idStr, p]) => {
@@ -92,14 +94,20 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                     });
                 }
             }
-            const end = performance.now();
-            console.log(`[SNAP_RCVD] PROC_ITEMS=${Object.keys(newPrices).length} AVG_MS=${(end-start).toFixed(2)}`);
-            localStorage.setItem(PERSISTENCE_KEY, JSON.stringify({
-                history: newHistory,
-                perItemAggs: Object.fromEntries(
-                    Object.entries(nextAggs).map(([k, v]) => [k, v.toJSON()])
-                )
-            }));
+            // Deferred Persistence to avoid UI jank
+            setTimeout(() => {
+                try {
+                    const storageData = {
+                        history: newHistory,
+                        perItemAggs: Object.fromEntries(
+                            Object.entries(nextAggs).map(([k, v]) => [k, v.toJSON()])
+                        )
+                    };
+                    localStorage.setItem(PERSISTENCE_KEY, JSON.stringify(storageData));
+                } catch (e) {
+                    console.error("[STORAGE_FAIL]", e);
+                }
+            }, 500);
             return { history: newHistory, perItemAggs: nextAggs };
         });
     },
@@ -118,11 +126,23 @@ export const useMarketStore = create<MarketState>((set, get) => ({
                 try {
                     const parsed = JSON.parse(saved);
                     history = parsed.history || [latest];
+                    // Hydrate aggregates
                     Object.entries(parsed.perItemAggs || {}).forEach(([id, data]) => {
                         perItemAggs[parseInt(id)] = new ItemAggregate(data as any);
                     });
+                    // Verification: If Aggregates are missing but history exists, rebuild
+                    if (Object.keys(perItemAggs).length === 0 && history.length > 0) {
+                        console.warn("[HYDRATION] REBUILDING_AGGS_FROM_HISTORY");
+                        history.forEach(snap => {
+                            Object.entries(snap).forEach(([idStr, p]) => {
+                                const id = parseInt(idStr);
+                                if (!perItemAggs[id]) perItemAggs[id] = new ItemAggregate();
+                                if (p.high && p.low) perItemAggs[id].add((p.high + p.low) / 2);
+                            });
+                        });
+                    }
                 } catch (e) {
-                    console.warn("Hydration error, resetting to clean state", e);
+                    console.warn("[HYDRATION_ERROR] Resetting to clean state", e);
                 }
             }
             if (Object.keys(perItemAggs).length === 0) {

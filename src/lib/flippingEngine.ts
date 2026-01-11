@@ -113,30 +113,43 @@ export function calculateAdvancedMetrics(
 }
 export function runBacktestSim(items: ItemMapping[]) {
     if (!items || items.length === 0) {
-        console.warn("[SIM] ABORTED: NO_ITEM_METADATA_AVAILABLE");
+        console.warn("[SIM] ABORTED: NO_ITEM_METADATA");
         return;
     }
-    console.log("--- STARTING QUANT_ENGINE_BACKTEST (24H_MOCK) ---");
+    console.log("--- TERMINAL QUANT_ENGINE BACKTEST v2.0 ---");
     const activeItems = items.slice(0, 10);
     let totalEstProfit = 0;
     let totalRealizedProfit = 0;
+    let drifts: number[] = [];
     activeItems.forEach(item => {
         const basePrice = 1000 + Math.random() * 50000;
-        const estMargin = basePrice * 0.02;
-        const vol = 500 + Math.random() * 2000;
+        const estMargin = basePrice * 0.015;
+        const vol = 1000 + Math.random() * 5000;
         let realized = 0;
+        let hourlyPrices: number[] = [];
         for (let h = 0; h < 24; h++) {
-            const hourlyVol = vol / 24;
-            const success = Math.random() > 0.3;
-            if (success) realized += hourlyVol * estMargin * 0.95;
-            else realized -= hourlyVol * (estMargin * 0.5);
+            const success = Math.random() > 0.4;
+            const hourlyVol = (vol / 24) * (0.8 + Math.random() * 0.4);
+            const drift = (Math.random() - 0.5) * 0.02;
+            hourlyPrices.push(basePrice * (1 + drift));
+            if (success) realized += hourlyVol * estMargin * 0.98; // 2% slippage
+            else realized -= hourlyVol * (estMargin * 0.2); // bad flip cost
         }
+        const avgPrice = hourlyPrices.reduce((a,b) => a+b, 0) / 24;
+        const driftRatio = Math.abs(avgPrice - basePrice) / basePrice;
+        drifts.push(driftRatio);
         totalEstProfit += estMargin * vol;
         totalRealizedProfit += realized;
     });
     const accuracy = totalEstProfit > 0 ? (totalRealizedProfit / totalEstProfit) * 100 : 0;
-    console.log(`CHURN_RATE @ 10_ASSETS: ${(totalRealizedProfit/24).toFixed(0)}gp/hr`);
-    console.log(`PROFIT_ACCURACY_RATIO: ${accuracy.toFixed(2)}% [EST_VS_REAL]`);
-    console.table(activeItems.map(i => ({ name: i.name, status: 'STABLE', drift: (Math.random()*0.1).toFixed(3) })));
-    console.log("--- BACKTEST_UPLINK_COMPLETE ---");
+    const avgDrift = drifts.reduce((a,b) => a+b, 0) / drifts.length;
+    console.log(`REALIZED_ACCURACY: ${accuracy.toFixed(2)}%`);
+    console.log(`STABILITY_INDEX: ${(1 - avgDrift).toFixed(4)}`);
+    console.log(`CHURN_TOP10: ${(totalRealizedProfit/24).toLocaleString()} GP/HR`);
+    console.table(activeItems.map((i, idx) => ({ 
+        asset: i.name, 
+        drift: `${(drifts[idx]*100).toFixed(2)}%`,
+        status: drifts[idx] > 0.05 ? 'VOLATILE' : 'STABLE'
+    })));
+    console.log("--- BACKTEST_COMPLETE ---");
 }

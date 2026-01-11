@@ -4,10 +4,10 @@ import { MarketTicker } from '@/components/market/MarketTicker';
 import { ItemGrid } from '@/components/market/ItemGrid';
 import { useMarketStore } from '@/store/marketStore';
 import { Search, RotateCcw, Loader2 } from 'lucide-react';
-import { Input } from '@/components/ui/input'; // Future: Support @refocus / @update commands
+import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Toaster, toast } from 'sonner';
-export function HomePage() {
+export default function HomePage() {
     const loadData = useMarketStore(s => s.loadData);
     const refreshPrices = useMarketStore(s => s.refreshPrices);
     const searchQuery = useMarketStore(s => s.searchQuery);
@@ -16,27 +16,24 @@ export function HomePage() {
     const historyLength = useMarketStore(s => s.history.length);
     const isLoading = useMarketStore(s => s.isLoading);
     const [isSyncing, setIsSyncing] = useState(false);
-    // Phase 11: Decoupled mount loading
     useEffect(() => {
         loadData();
     }, [loadData]);
-    // Phase 11: Heartbeat sync effect with proper dependency tracking
     useEffect(() => {
         const interval = setInterval(() => {
-            if (!isSyncing) {
-                refreshPrices().catch(err => console.error("Auto-sync failed", err));
+            if (!isSyncing && !isLoading) {
+                refreshPrices().catch(err => console.error("[SYNC_ERR]", err));
             }
         }, 30000);
         return () => clearInterval(interval);
-    }, [isSyncing, refreshPrices]);
+    }, [isSyncing, isLoading, refreshPrices]);
     const handleManualRefresh = async () => {
         if (isSyncing) return;
         setIsSyncing(true);
         try {
             await refreshPrices();
-            toast.success('UPLINK_SYNC_SUCCESSFUL');
+            toast.success('UPLINK_SYNC_SUCCESS');
         } catch (error) {
-            console.error("Manual refresh error", error);
             toast.error('UPLINK_SYNC_FAILED');
         } finally {
             setIsSyncing(false);
@@ -44,45 +41,60 @@ export function HomePage() {
     };
     return (
         <RetroLayout>
-            <MarketTicker />
-            <div className="mb-8 flex flex-col md:flex-row gap-4 items-end">
-                <div className="flex-1 w-full">
-                    <label className="text-[10px] text-terminal-green/70 mb-1 block uppercase font-mono">Input_Query {'>'} Filter_Items</label>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-terminal-green/50" size={18} />
-                        <Input
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="SEARCH_GRAND_EXCHANGE... [CMD_PROMPT_STUB]"
-                            className="bg-terminal-black border-terminal-green/30 text-terminal-green rounded-none pl-10 h-12 font-mono uppercase"
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="py-8 md:py-10 lg:py-12 space-y-8">
+                    <MarketTicker />
+                    <div className="flex flex-col md:flex-row gap-4 items-end">
+                        <div className="flex-1 w-full">
+                            <label className="text-[10px] text-terminal-green/70 mb-1 block uppercase font-mono tracking-widest">
+                                INGRESS_FILTER {'>'} GRAND_EXCHANGE_INDEX
+                            </label>
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-terminal-green/50" size={18} />
+                                <Input
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder="SEARCH_MARKET_DATABASE..."
+                                    className="bg-terminal-black border-terminal-green/30 text-terminal-green rounded-none pl-10 h-12 font-mono uppercase focus:border-terminal-green"
+                                />
+                            </div>
+                        </div>
+                        <Button
+                            onClick={handleManualRefresh}
+                            disabled={isSyncing || isLoading}
+                            variant="outline"
+                            className="border-terminal-green/30 text-terminal-green hover:bg-terminal-green/10 rounded-none h-12 font-mono min-w-[160px] uppercase"
+                        >
+                            {isSyncing ? <Loader2 className="animate-spin mr-2" size={16} /> : <RotateCcw className="mr-2" size={16} />}
+                            {isSyncing ? 'SYNCING...' : 'RE_SYNC_UPLINK'}
+                        </Button>
+                    </div>
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-end border-b border-terminal-green/10 pb-2">
+                            <h2 className="text-xl font-bold tracking-[0.2em] uppercase glow-text">
+                                {searchQuery ? 'SEARCH_RESULTS' : 'TOP_MARKET_FLIPS'}
+                            </h2>
+                            <div className="text-[9px] font-mono text-terminal-green/40 text-right uppercase leading-tight">
+                                LAST_PULSE: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : 'INITIALIZING...'} <br/>
+                                BUFFER_STATE: {historyLength} / 120 SNAPSHOTS
+                            </div>
+                        </div>
+                        {/* Line view for high-density startup; Card view for focused searching */}
+                        <ItemGrid
+                            variant={(!searchQuery && !isLoading) ? 'line' : 'card'}
+                            limit={(!searchQuery && !isLoading) ? 15 : 60}
                         />
                     </div>
                 </div>
-                <Button
-                    onClick={handleManualRefresh}
-                    disabled={isSyncing}
-                    variant="outline"
-                    className="border-terminal-green/30 text-terminal-green rounded-none h-12 font-mono min-w-[140px]"
-                >
-                    {isSyncing ? <Loader2 className="animate-spin" /> : <RotateCcw className="mr-2" size={16} />}
-                    {isSyncing ? 'SYNCING...' : 'RE-SYNC'}
-                </Button>
             </div>
-            <div className="mb-4 flex justify-between items-end border-b border-terminal-green/10 pb-2">
-                <h2 className="text-lg font-bold tracking-widest uppercase glow-text">Top_Market_Margins</h2>
-                <div className="text-[9px] font-mono text-terminal-green/50 text-right uppercase">
-                    PULSE: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : 'WAITING...'} <br/>
-                    VOL_BUFFER: {historyLength} SNAPS
-                </div>
-            </div>
-
-            {/* High-density startup view: Default to 'line' variant if no query and not loading */}
-            <ItemGrid 
-                variant={(!searchQuery && !isLoading) ? 'line' : 'card'} 
-                limit={(!searchQuery && !isLoading) ? 12 : 100}
-            />
             <Toaster theme="dark" position="bottom-right" toastOptions={{
-                style: { background: '#050505', border: '1px solid #39ff14', color: '#39ff14', borderRadius: '0px' }
+                style: { 
+                    background: '#050505', 
+                    border: '1px solid #39ff14', 
+                    color: '#39ff14', 
+                    borderRadius: '0px',
+                    fontFamily: 'monospace' 
+                }
             }} />
         </RetroLayout>
     );
