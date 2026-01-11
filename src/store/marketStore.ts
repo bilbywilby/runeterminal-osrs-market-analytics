@@ -1,11 +1,24 @@
 import { create } from 'zustand';
 import { fetchLatestPrices, fetchItemMapping, ItemMapping, RawPrice } from '@/lib/api';
+import { calculateFlippingMetrics, FlippingMetrics } from '@/lib/flippingEngine';
 export interface EnrichedItem extends ItemMapping {
     high: number;
     low: number;
     margin: number;
     roi: number;
     isFavorite: boolean;
+    metrics: FlippingMetrics;
+}
+export const UI_THRESHOLDS = {
+    highMargin: 10000,
+    highRoi: 3,
+    volatilityLow: 5,
+    volatilityHigh: 10
+};
+interface ScannerConfig {
+    minMarginVolume: number;
+    maxVolatility: number;
+    topN: number;
 }
 interface MarketState {
     items: ItemMapping[];
@@ -14,10 +27,14 @@ interface MarketState {
     isLoading: boolean;
     lastUpdated: number;
     searchQuery: string;
+    viewPreference: 'table' | 'grid';
+    scannerConfig: ScannerConfig;
     loadData: () => Promise<void>;
     refreshPrices: () => Promise<void>;
     setSearchQuery: (query: string) => void;
     toggleFavorite: (id: number) => void;
+    setViewPreference: (pref: 'table' | 'grid') => void;
+    updateScannerConfig: (config: Partial<ScannerConfig>) => void;
 }
 const STORAGE_KEY = 'rune_terminal_favorites';
 export const useMarketStore = create<MarketState>((set, get) => ({
@@ -27,7 +44,17 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     isLoading: false,
     lastUpdated: 0,
     searchQuery: '',
+    viewPreference: 'table',
+    scannerConfig: {
+        minMarginVolume: 1000000,
+        maxVolatility: 10,
+        topN: 50
+    },
     setSearchQuery: (query) => set({ searchQuery: query }),
+    setViewPreference: (viewPreference) => set({ viewPreference }),
+    updateScannerConfig: (config) => set((state) => ({ 
+        scannerConfig: { ...state.scannerConfig, ...config } 
+    })),
     toggleFavorite: (id) => {
         const currentFavorites = get().favorites;
         const newFavorites = currentFavorites.includes(id)
@@ -63,22 +90,16 @@ export const useMarketStore = create<MarketState>((set, get) => ({
         }
     }
 }));
-/**
- * Pure helper function to enrich a raw item with price data and favorite status.
- * Used inside components with useMemo to ensure stable references.
- */
 export function enrichItem(item: ItemMapping, prices: Record<string, RawPrice>, favorites: number[]): EnrichedItem {
-    const p = prices[item.id] || { high: 0, low: 0 };
-    const margin = p.high > 0 && p.low > 0 ? (p.high - p.low) : 0;
-    const tax = Math.floor(p.high * 0.01);
-    const netMargin = Math.max(0, margin - tax);
-    const roi = p.low > 0 ? (netMargin / p.low) * 100 : 0;
+    const p = prices[item.id] || { high: 0, low: 0, highTime: 0, lowTime: 0 };
+    const metrics = calculateFlippingMetrics(item, p);
     return {
         ...item,
-        high: p.high,
-        low: p.low,
-        margin: netMargin,
-        roi: roi,
-        isFavorite: favorites.includes(item.id)
+        high: metrics.sellPrice,
+        low: metrics.buyPrice,
+        margin: metrics.margin,
+        roi: metrics.roi,
+        isFavorite: favorites.includes(item.id),
+        metrics
     };
 }

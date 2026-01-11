@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Terminal, ShieldCheck, Wifi, Clock, LayoutDashboard, SearchCode, Database } from 'lucide-react';
+import { Terminal, ShieldCheck, Wifi, Clock, LayoutDashboard, Zap, Database } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Link, useLocation } from 'react-router-dom';
 export function RetroLayout({ children }: { children: React.ReactNode }) {
@@ -11,7 +11,7 @@ export function RetroLayout({ children }: { children: React.ReactNode }) {
     }, []);
     const navItems = [
         { label: 'TERMINAL', path: '/', icon: LayoutDashboard },
-        { label: 'SCANNER', path: '/scanner', icon: SearchCode },
+        { label: 'FLIPPER', path: '/flipper', icon: Zap },
         { label: 'INTEL', path: '/intelligence', icon: Database },
     ];
     return (
@@ -49,9 +49,9 @@ export function RetroLayout({ children }: { children: React.ReactNode }) {
                                 key={item.path}
                                 to={item.path}
                                 className={cn(
-                                    "flex items-center gap-2 px-6 py-2 text-xs font-mono border-x border-t transition-all",
-                                    isActive 
-                                        ? "bg-terminal-green text-terminal-black border-terminal-green" 
+                                    "flex items-center gap-2 px-6 py-2 text-xs font-mono border-x border-t transition-all relative",
+                                    isActive
+                                        ? "bg-terminal-green text-terminal-black border-terminal-green"
                                         : "bg-transparent text-terminal-green border-terminal-green/30 hover:bg-terminal-green/10"
                                 )}
                                 style={{
@@ -67,12 +67,12 @@ export function RetroLayout({ children }: { children: React.ReactNode }) {
             </nav>
             {/* Main Content Area */}
             <main className="pt-28 pb-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="relative border-2 border-terminal-green/30 p-4 md:p-6 min-h-[calc(100vh-10rem)]">
+                <div className="relative border-2 border-terminal-green/30 p-4 md:p-6 min-h-[calc(100vh-10rem)] bg-terminal-black/40 backdrop-blur-[2px]">
                     {/* Corner Accents */}
-                    <div className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-terminal-green" />
-                    <div className="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-terminal-green" />
-                    <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-terminal-green" />
-                    <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-terminal-green" />
+                    <div className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-terminal-green shadow-[0_0_8px_rgba(57,255,20,0.5)]" />
+                    <div className="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-terminal-green shadow-[0_0_8px_rgba(57,255,20,0.5)]" />
+                    <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-terminal-green shadow-[0_0_8px_rgba(57,255,20,0.5)]" />
+                    <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-terminal-green shadow-[0_0_8px_rgba(57,255,20,0.5)]" />
                     {children}
                 </div>
             </main>

@@ -28,7 +28,7 @@ const router = createBrowserRouter([
     errorElement: <RouteErrorBoundary />,
   },
   {
-    path: "/scanner",
+    path: "/flipper",
     element: <MarketScanner />,
     errorElement: <RouteErrorBoundary />,
   },
