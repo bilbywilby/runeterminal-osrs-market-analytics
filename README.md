@@ -1,6 +1,6 @@
 # Cloudflare Fullstack App Template
 
-[cloudflarebutton]
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/bilbywilby/runeterminal-osrs-market-analytics)
 
 A production-ready fullstack application template powered by Cloudflare Workers (backend) and Vite + React (frontend). Features a modern UI with shadcn/ui, Tailwind CSS, and seamless integration for API routes, error handling, and deployment.
 
@@ -89,7 +89,7 @@ wrangler deploy
 
 Assets are automatically handled via `assets` config in `wrangler.jsonc`. Preview at your Worker URL.
 
-[cloudflarebutton]
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/bilbywilby/runeterminal-osrs-market-analytics)
 
 ## Project Structure
 
