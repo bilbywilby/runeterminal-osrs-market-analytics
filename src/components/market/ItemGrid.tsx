@@ -6,7 +6,12 @@ import { Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
-export function ItemGrid() {
+
+interface ItemGridProps {
+    variant?: 'card' | 'line';
+    limit?: number;
+}
+export function ItemGrid({ variant = 'card', limit = 100 }: ItemGridProps) {
     const rawItems = useMarketStore(s => s.items);
     const prices = useMarketStore(s => s.prices);
     const favorites = useMarketStore(s => s.favorites);
@@ -19,7 +24,7 @@ export function ItemGrid() {
             .filter(item => item.name.toLowerCase().includes(query))
             .map(item => enrichItem(item, prices, favorites))
             .sort((a, b) => b.margin - a.margin)
-            .slice(0, 100);
+            .slice(0, limit);
     }, [rawItems, prices, favorites, searchQuery]);
     if (isLoading) {
         return (
@@ -50,6 +55,23 @@ export function ItemGrid() {
                         exit={{ opacity: 0, scale: 0.95 }}
                         transition={{ duration: 0.2 }}
                     >
+                        layout
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                    >
+                        {variant === 'line' ? (
+                            <Link to={`/item/${item.id}`} className="block focus:outline-none">
+                                <div className="flex items-center justify-between p-2 border border-terminal-green/10 hover:bg-terminal-green/5 transition-colors font-mono text-[11px] group">
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-terminal-green group-hover:glow-text font-bold">[{item.id}] {item.name}</span>
+                                    </div>
+                                    <div className="flex gap-4">
+                                        <span className="text-terminal-amber">BUY: {item.high.toLocaleString()}gp</span>
+                                        <span className="text-terminal-green font-bold">ROI: {item.roi.toFixed(1)}%</span>
+                                    </div>
+                                </div>
+                            </Link>
+                        ) : (
                         <Link to={`/item/${item.id}`} className="block focus:outline-none h-full">
                             <Card className="bg-terminal-black border-terminal-green/30 hover:border-terminal-green transition-all rounded-none p-4 flex flex-col gap-3 group relative h-full">
                                 <button
@@ -109,6 +131,7 @@ export function ItemGrid() {
                                 </div>
                             </Card>
                         </Link>
+                        )}
                     </motion.div>
                 ))}
             </AnimatePresence>

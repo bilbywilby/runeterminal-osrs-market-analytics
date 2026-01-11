@@ -10,169 +10,150 @@ import { toast } from 'sonner';
 export function FlipBuddy() {
   const items = useMarketStore(s => s.items);
   const prices = useMarketStore(s => s.prices);
-  const prices5m = useMarketStore(s => s.prices5m);
   const volumes = useMarketStore(s => s.volumes24h);
   const [capital, setCapital] = useState('10M');
   const [risk, setRisk] = useState('moderate');
   const [horizon, setHorizon] = useState('2h');
   const [focus, setFocus] = useState('all');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [processLog, setProcessLog] = useState<string[]>([]);
   const [result, setResult] = useState<FlipBuddyResponse | null>(null);
   const handleGenerate = async () => {
     setIsProcessing(true);
-    setResult(null);
-    setProcessLog([]);
-    const logs = [
-        "INITIALIZING_NEURAL_UPLINK...",
-        "FETCHING_MARKET_SNAPSHOTS...",
-        "ANALYZING_5M_LIQUIDITY_DYNAMICS...",
-        "VERIFYING_24H_DATA_FRESHNESS...",
-        "COMPUTING_QUANT_RANKINGS..."
-    ];
-    for (const log of logs) {
-        setProcessLog(prev => [...prev, `> ${log}`]);
-        await new Promise(r => setTimeout(r, 400));
-    }
+    // Simulate thinking delay for retro effect
+    await new Promise(r => setTimeout(r, 1500));
     try {
       const capNum = parseCapital(capital);
       if (capNum <= 0) {
         toast.error("INVALID_CAPITAL_INPUT");
         return;
       }
-      const recs = computeRecs(capNum, risk, horizon, focus, items, prices, volumes, prices5m);
-      if (!recs || !recs.items.length) {
-        toast.error("ZERO_VECTORS_FOUND");
-        setProcessLog(prev => [...prev, "> ERROR: NO_VIABLE_TARGETS"]);
-      } else {
-        setResult(recs);
-        toast.success("STRATEGY_LOCKED");
-      }
+      const recs = computeRecs(capNum, risk, horizon, focus, items, prices, volumes);
+      setResult(recs);
+      toast.success("STRATEGY_COMPUTED");
     } catch (err) {
       toast.error("ENGINE_FAULT_DETECTED");
-      console.error(err);
     } finally {
       setIsProcessing(false);
     }
   };
   const copySequence = () => {
     if (!result) return;
-    const text = result.items.map(i => `${i.name}: BUY @ ${i.buyPrice.toLocaleString()}gp`).join('\n');
+    const text = result.items.map(i => i.name).join(', ');
     navigator.clipboard.writeText(text);
-    toast.success("SEQUENCE_LOCKED_TO_CLIPBOARD");
+    toast.success("SEQUENCE_COPIED_TO_CLIPBOARD");
   };
   return (
     <RetroLayout>
       <div className="max-w-4xl mx-auto space-y-8">
         <div className="border-b border-terminal-green/30 pb-4">
           <h1 className="text-3xl font-black tracking-tighter uppercase glow-text flex items-center gap-3">
-            <Brain className="text-terminal-amber" /> FLIP_BUDDY_ASSISTANT
+            <Brain className="text-terminal-amber" /> FLIP_BUDDY_ASSISTANT_V2
           </h1>
-          <p className="text-[10px] font-mono text-terminal-green/50 uppercase">UPLINK_SECURE // SYSTEM_STABLE // VERSION_2.1</p>
+          <p className="text-[10px] font-mono text-terminal-green/50">NEURAL_NETWORK_STABLE // VERSION: 2.0.4-BETA</p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="space-y-6 border border-terminal-green/20 p-6 bg-terminal-green/5">
-            <h2 className="text-xs font-bold flex items-center gap-2 border-b border-terminal-green/10 pb-2 uppercase text-terminal-amber font-mono">
-              <Cpu size={14} /> NEURAL_PARAMETERS
+            <h2 className="text-sm font-bold flex items-center gap-2 border-b border-terminal-green/10 pb-2 uppercase">
+              <Cpu size={14} /> Neural_Parameters
             </h2>
-            <div className="space-y-4 font-mono">
+            <div className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[10px] uppercase text-terminal-green/50">INPUT_CAPITAL</label>
-                <Input
-                  value={capital}
-                  onChange={e => setCapital(e.target.value)}
-                  placeholder="e.g. 50M"
-                  className="bg-terminal-black border-terminal-green/30 rounded-none h-10 text-terminal-green focus:border-terminal-green uppercase"
+                <label className="text-[10px] uppercase text-terminal-green/50">Working_Capital (e.g. 50M, 100K)</label>
+                <Input 
+                  value={capital} 
+                  onChange={e => setCapital(e.target.value)} 
+                  className="bg-terminal-black border-terminal-green/30 rounded-none h-10 font-mono text-terminal-green"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] uppercase text-terminal-green/50">RISK_LEVEL</label>
+                  <label className="text-[10px] uppercase text-terminal-green/50">Risk_Profile</label>
                   <Select value={risk} onValueChange={setRisk}>
-                    <SelectTrigger className="bg-terminal-black border-terminal-green/30 rounded-none h-10 text-terminal-green">
+                    <SelectTrigger className="bg-terminal-black border-terminal-green/30 rounded-none h-10 font-mono text-terminal-green">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-terminal-black border-terminal-green border-2 rounded-none text-terminal-green">
-                      <SelectItem value="low">STABLE</SelectItem>
+                      <SelectItem value="low">LOW (STABLE)</SelectItem>
                       <SelectItem value="moderate">MODERATE</SelectItem>
-                      <SelectItem value="high">VOLATILE</SelectItem>
+                      <SelectItem value="high">HIGH (VOLATILE)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] uppercase text-terminal-green/50">HORIZON</label>
+                  <label className="text-[10px] uppercase text-terminal-green/50">Time_Horizon</label>
                   <Select value={horizon} onValueChange={setHorizon}>
-                    <SelectTrigger className="bg-terminal-black border-terminal-green/30 rounded-none h-10 text-terminal-green">
+                    <SelectTrigger className="bg-terminal-black border-terminal-green/30 rounded-none h-10 font-mono text-terminal-green">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-terminal-black border-terminal-green border-2 rounded-none text-terminal-green">
-                      <SelectItem value="2h">SCALP</SelectItem>
+                      <SelectItem value="2h">2H SCALPING</SelectItem>
                       <SelectItem value="overnight">OVERNIGHT</SelectItem>
+                      <SelectItem value="week">1_WEEK_HOLD</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
-              <Button
-                onClick={handleGenerate}
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase text-terminal-green/50">Market_Focus</label>
+                <Select value={focus} onValueChange={setFocus}>
+                  <SelectTrigger className="bg-terminal-black border-terminal-green/30 rounded-none h-10 font-mono text-terminal-green">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-terminal-black border-terminal-green border-2 rounded-none text-terminal-green">
+                    <SelectItem value="all">ALL_MARKETS</SelectItem>
+                    <SelectItem value="gear">PVM_GEAR_ONLY</SelectItem>
+                    <SelectItem value="rares">HIGH_VALUE_RARES</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button 
+                onClick={handleGenerate} 
                 disabled={isProcessing}
-                className="w-full bg-terminal-green text-terminal-black hover:bg-terminal-amber font-black rounded-none h-12 transition-all uppercase"
+                className="w-full bg-terminal-green text-terminal-black hover:bg-terminal-amber font-black rounded-none h-12 transition-colors uppercase"
               >
                 {isProcessing ? <Loader2 className="animate-spin mr-2" /> : <Send size={16} className="mr-2" />}
-                {isProcessing ? 'CALCULATING...' : 'COMPUTE_STRATEGY'}
+                {isProcessing ? 'CALCULATING_VECTORS...' : 'GENERATE_STRATEGY'}
               </Button>
             </div>
           </div>
-          <div className="relative border border-terminal-green/20 bg-terminal-black p-6 font-mono text-[11px] min-h-[420px] shadow-[inset_0_0_20px_rgba(57,255,20,0.05)]">
-            <div className="absolute top-2 right-2 flex gap-1.5">
-              <div className="w-1.5 h-1.5 bg-terminal-green rounded-full animate-pulse" />
-              <div className="w-1.5 h-1.5 bg-terminal-amber rounded-full animate-pulse delay-100" />
+          <div className="relative border border-terminal-green/20 bg-terminal-black p-6 font-mono text-xs overflow-hidden">
+            <div className="absolute top-2 right-2 flex gap-2">
+              <div className="w-2 h-2 bg-terminal-green rounded-full animate-pulse" />
+              <div className="w-2 h-2 bg-terminal-amber rounded-full animate-pulse delay-75" />
             </div>
-            <h2 className="text-xs font-bold flex items-center gap-2 border-b border-terminal-green/10 pb-2 uppercase mb-4 text-terminal-green">
-              <Terminal size={14} /> OUTPUT_BUFFER
+            <h2 className="text-sm font-bold flex items-center gap-2 border-b border-terminal-green/10 pb-2 uppercase mb-4">
+              <Terminal size={14} /> Output_Buffer
             </h2>
-            <div className="space-y-2">
-                {processLog.map((log, i) => (
-                    <div key={i} className="text-terminal-green/40">{log}</div>
-                ))}
-                {result && (
-                  <div className="mt-4 space-y-3 animate-in fade-in slide-in-from-right-4 duration-500">
-                    <p className="text-terminal-amber leading-relaxed whitespace-pre-wrap">
-                      <span className="text-terminal-green">"summary":</span> "{result.summary}",
-                    </p>
-                    <div className="pl-4 space-y-1.5">
-                      <p className="text-terminal-green">"top_vectors": [</p>
-                      {result.items.map((item, idx) => (
-                        <div key={item.id} className="pl-4 leading-tight">
-                          <span className="text-terminal-amber">"{item.name}"</span>
-                          <span className="text-terminal-green">: {"{"}</span>
-                          <span className="text-terminal-green/60"> profit: </span>
-                          <span className="text-terminal-amber">+{item.profitPerItem.toLocaleString()}</span>
-                          <span className="text-terminal-green"> {"}"}</span>
-                          {idx < result.items.length - 1 ? ',' : ''}
-                        </div>
-                      ))}
-                      <p className="text-terminal-green">],</p>
-                      <p className="text-terminal-green">"wildcard": <span className="text-terminal-amber">"{result.wildcard.name}"</span></p>
+            {result ? (
+              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <p className="text-terminal-amber leading-relaxed whitespace-pre-wrap">
+                  {`{ "summary": "${result.summary}", `}
+                </p>
+                <div className="pl-4 space-y-2">
+                  <p className="text-terminal-green">"top_vectors": [</p>
+                  {result.items.map((item, idx) => (
+                    <div key={item.id} className="pl-4">
+                      <span className="text-terminal-green/70">{`{ "id": ${item.id}, "asset": "${item.name}", "profit_est": "+${item.profitPerItem}gp", "note": "${item.shortNote}" }`}{idx < result.items.length - 1 ? ',' : ''}</span>
                     </div>
-                    <div className="pt-6">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={copySequence}
-                        className="border-terminal-green/30 text-terminal-green hover:bg-terminal-green/10 rounded-none h-10 w-full text-[10px] uppercase font-bold"
-                      >
-                        <Copy size={12} className="mr-2" /> LOCK_SEQUENCE_TO_CLIPBOARD
-                      </Button>
-                    </div>
-                  </div>
-                )}
-                {!isProcessing && !result && (
-                  <div className="h-64 flex flex-col items-center justify-center opacity-20 text-center uppercase tracking-widest italic font-mono">
-                    <div className="mb-2 animate-pulse">[ STANDBY ]</div>
-                    AWAITING_INPUT_SIGNAL
-                  </div>
-                )}
-            </div>
+                  ))}
+                  <p className="text-terminal-green">],</p>
+                  <p className="text-terminal-amber">"wildcard": {`{ "asset": "${result.wildcard.name}", "risk": "CRITICAL" }`}</p>
+                </div>
+                <p className="text-terminal-amber">}</p>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={copySequence}
+                  className="mt-4 border-terminal-green/30 text-terminal-green rounded-none h-8 text-[10px] w-full"
+                >
+                  <Copy size={12} className="mr-2" /> COPY_SEQUENCE_FOR_CLIENT
+                </Button>
+              </div>
+            ) : (
+              <div className="h-64 flex items-center justify-center opacity-30 text-center uppercase">
+                Awaiting_Parameters<br/>Initialize_Scan_To_Proceed
+              </div>
+            )}
           </div>
         </div>
       </div>

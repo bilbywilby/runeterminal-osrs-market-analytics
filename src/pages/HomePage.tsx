@@ -4,7 +4,7 @@ import { MarketTicker } from '@/components/market/MarketTicker';
 import { ItemGrid } from '@/components/market/ItemGrid';
 import { useMarketStore } from '@/store/marketStore';
 import { Search, RotateCcw, Loader2 } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import { Input } from '@/components/ui/input'; // Future: Support @refocus / @update commands
 import { Button } from '@/components/ui/button';
 import { Toaster, toast } from 'sonner';
 export function HomePage() {
@@ -14,6 +14,7 @@ export function HomePage() {
     const setSearchQuery = useMarketStore(s => s.setSearchQuery);
     const lastUpdated = useMarketStore(s => s.lastUpdated);
     const historyLength = useMarketStore(s => s.history.length);
+    const isLoading = useMarketStore(s => s.isLoading);
     const [isSyncing, setIsSyncing] = useState(false);
     // Phase 11: Decoupled mount loading
     useEffect(() => {
@@ -52,7 +53,7 @@ export function HomePage() {
                         <Input
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="SEARCH_GRAND_EXCHANGE..."
+                            placeholder="SEARCH_GRAND_EXCHANGE... [CMD_PROMPT_STUB]"
                             className="bg-terminal-black border-terminal-green/30 text-terminal-green rounded-none pl-10 h-12 font-mono uppercase"
                         />
                     </div>
@@ -74,7 +75,12 @@ export function HomePage() {
                     VOL_BUFFER: {historyLength} SNAPS
                 </div>
             </div>
-            <ItemGrid />
+
+            {/* High-density startup view: Default to 'line' variant if no query and not loading */}
+            <ItemGrid 
+                variant={(!searchQuery && !isLoading) ? 'line' : 'card'} 
+                limit={(!searchQuery && !isLoading) ? 12 : 100}
+            />
             <Toaster theme="dark" position="bottom-right" toastOptions={{
                 style: { background: '#050505', border: '1px solid #39ff14', color: '#39ff14', borderRadius: '0px' }
             }} />

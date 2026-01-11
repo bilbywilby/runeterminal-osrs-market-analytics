@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Terminal, ShieldCheck, Wifi, Clock, LayoutDashboard, Zap, Database } from 'lucide-react';
+import { Terminal, ShieldCheck, Wifi, Clock, LayoutDashboard, Zap, Database, Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Link, useLocation } from 'react-router-dom';
 export function RetroLayout({ children }: { children: React.ReactNode }) {
@@ -12,6 +12,7 @@ export function RetroLayout({ children }: { children: React.ReactNode }) {
     const navItems = [
         { label: 'TERMINAL', path: '/', icon: LayoutDashboard },
         { label: 'FLIPPER', path: '/flipper', icon: Zap },
+        { label: 'BUDDY', path: '/buddy', icon: Brain },
         { label: 'INTEL', path: '/intelligence', icon: Database },
     ];
     return (
@@ -35,7 +36,7 @@ export function RetroLayout({ children }: { children: React.ReactNode }) {
                     </div>
                     <div className="flex items-center gap-2 text-terminal-amber font-bold">
                         <Clock size={14} />
-                        <span>{time.toLocaleTimeString()}</span>
+                        <span className="tabular-nums">{time.toLocaleTimeString()}</span>
                     </div>
                 </div>
             </header>
@@ -78,7 +79,10 @@ export function RetroLayout({ children }: { children: React.ReactNode }) {
             </main>
             {/* Footer */}
             <footer className="fixed bottom-0 left-0 right-0 h-8 border-t border-terminal-green/30 bg-terminal-black flex items-center px-4 text-[10px] justify-between uppercase tracking-tighter opacity-70">
-                <div>SYSTEM_LOAD: NORMAL // UPLINK: {Math.floor(Math.random() * 100)}ms</div>
+                <div className="flex gap-4">
+                    <span>SYSTEM_LOAD: NORMAL // UPLINK: {Math.floor(Math.random() * 100)}ms</span>
+                    <span className="hidden md:inline text-terminal-amber animate-pulse">BUDDY_LINK_STABLE</span>
+                </div>
                 <div>EST_TAX_ADJUSTMENT: 1.0% // COPYRIGHT 1999-2024 TERMINAL_CORP</div>
             </footer>
         </div>

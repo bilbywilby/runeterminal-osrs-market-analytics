@@ -14,6 +14,7 @@ import '@/index.css'
 import { HomePage } from '@/pages/HomePage'
 import { ItemDetailPage } from '@/pages/ItemDetailPage'
 import { MarketScanner } from '@/pages/MarketScanner'
+import { FlipBuddy } from '@/pages/FlipBuddy'
 import { IntelligencePage } from '@/pages/IntelligencePage'
 const queryClient = new QueryClient();
 const router = createBrowserRouter([
@@ -30,6 +31,11 @@ const router = createBrowserRouter([
   {
     path: "/flipper",
     element: <MarketScanner />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: "/buddy",
+    element: <FlipBuddy />,
     errorElement: <RouteErrorBoundary />,
   },
   {
